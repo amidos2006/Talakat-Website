@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <title>Bullet Hell Engine</title>
+    <style>
+        #input {
+            position: fixed;
+            left: 410px;
+            width: 500px;
+        }
+
+        #debug {
+            position: fixed;
+            left: 750px;
+        }
+
+        #left {
+            position: fixed;
+            left: 0px;
+        }
+
+        #play {
+            position: relative;
+            width: 200px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="left">
+        <div id="game"></div>
+    </div>
+    <div id="input">
+        <textarea readonly id="debugText" rows="40" cols="50"></textarea>
+        <br/>
+        <label>Population Size:</label><input id="populationNumber" value="30"></text><label> Thread Number:</label><input id="threadNumber" value="2"></text>
+        <br/>
+        <label>Entropy:</label><input type="range" min="0" max="100" value="50" class="slider" id="entropy">
+        <label>Risk:</label><input type="range" min="0" max="100" value="50" class="slider" id="risk">
+        <br/>
+        <label>Distribution:</label><input type="range" min="0" max="100" value="50" class="slider" id="distribution">
+        <label>Density:</label><input type="range" min="0" max="100" value="50" class="slider" id="density">
+        <br/>
+        <button id="play" onclick="startEvolution(parseInt(document.getElementById('populationNumber').value), parseInt(document.getElementById('threadNumber').value))">Start Evolution</button>
+        <button id="play" onclick="stopEvolution()">Stop Evolution</button>
+        <br/>
+        <button id="play" onclick="playBest()">Play The Best</button>
+        <button id="play" onclick="stopBest()">Stop Playing</button>
+        <br/>
+        <button id="play" onclick="document.getElementById('debugText').textContent = ''">Clear</button>
+    </div>
+</body>
+<script src="js/tracery.js"></script>
+<script src="js/talakat.js"></script>
+<script src="js/p5.js"></script>
+<script src="js/generate.js"></script>
+
+</html>

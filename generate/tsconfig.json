@@ -1,0 +1,13 @@
+{
+	"compilerOptions": {
+		"target": "es5",
+		"sourceMap": false,
+		"outDir": "bin",
+		"outFile": "../bin/js/generate.js"
+	},
+	"include": [
+		"Generate.ts",
+		"Chromosome.ts",
+		"../definitions/*"
+	]
+}

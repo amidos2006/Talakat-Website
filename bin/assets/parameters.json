@@ -1,0 +1,22 @@
+{
+    "width": 400,
+    "height": 640,
+    "maxDepth": 5,
+    "agent": "AStarPlanner",
+    "agentType": "time",
+    "agentValue": 30,
+    "maxStepTime": 20,
+    "maxAgentTime": 30000,
+    "maxSpawnerFrames": 10,
+    "maxNumSpawners": 100,
+    "bulletToSpawner": 2,
+    "repeatingAction": 4,
+    "checkInterval": 1000,
+    "sequenceSize": 23,
+    "crossover": 0.7,
+    "mutation": 0.1,
+    "mutationSize": 1,
+    "maxValue": 50,
+    "bucketsX": 8,
+    "bucketsY": 10
+}
