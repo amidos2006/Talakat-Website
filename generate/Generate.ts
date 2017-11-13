@@ -1,7 +1,6 @@
 let recordedMessages:any[] = [];
 let interval:any = null;
-let currentPopulation:Population = null;
-let bestPopulation:Population = null;
+let mapElite:MapElite = null;
 let spawnerGrammar: any;
 let scriptGrammar: any;
 let parameters: any;
@@ -28,38 +27,194 @@ function debugLog(text: string): void {
     document.getElementById("debugText").scrollTop = document.getElementById("debugText").scrollHeight;
 }
 
+class Elite{
+    best:Chromosome;
+    population:Population;
+
+    constructor(best:Chromosome){
+        this.best = best;
+        this.population = new Population();
+    }
+}
+
+class Evaluator{
+    workers: Worker[];
+    population:Chromosome[];
+    running:boolean;
+
+    constructor(){
+        this.workers = [];
+        this.population = null;
+        this.running = false;
+    }
+
+    startEvaluation(chromosomes:Chromosome[], param: any): void {
+        debugLog("Evaluator Started.\n");
+
+        this.population = chromosomes;
+        this.running = true;
+
+        let chromoPerThread: number = Math.floor(this.population.length / param.threadNumbers);
+        for (let i: number = 0; i < param.threadNumbers; i++) {
+            let end: number = (i + 1) * chromoPerThread;
+            if (i == param.threadNumbers - 1) {
+                end = this.population.length;
+            }
+            let data: any = { id: [], parameters: param, input: [] };
+            for (let j: number = i * chromoPerThread; j < end; j++) {
+                data.id.push(this.population[j].id);
+                data.input.push(generateTalakatScript(this.population[j].spawnerSequence, this.population[j].scriptSequence));
+            }
+            let w: Worker = new Worker("js/evaluator.js");
+            w.postMessage(data);
+            w.onmessage = function (event) {
+                for (let i: number = 0; i < event.data.id.length; i++) {
+                    recordedMessages.push({
+                        id: event.data.id[i],
+                        fitness: event.data.fitness[i],
+                        constraints: event.data.constraints[i],
+                        behavior: event.data.behavior[i]
+                    });
+                }
+            }
+            this.workers.push(w);
+        }
+    }
+
+    checkDone(): boolean {
+        return recordedMessages.length >= this.population.length;
+    }
+
+    private assignFitness(msg: any): void {
+        for (let c of this.population) {
+            if (c.id == msg.id) {
+                c.fitness = msg.fitness;
+                c.behavior = msg.behavior;
+                c.constraints = msg.constraints;
+                return;
+            }
+        }
+    }
+
+    finishEvaluation(): Chromosome[] {
+        for (let msg of recordedMessages) {
+            this.assignFitness(msg);
+        }
+        let evaluatedPop:Chromosome[] = this.population;
+        this.terminate();
+        debugLog("Evaluator Finished.\n");
+        return evaluatedPop;
+    }
+
+    terminate(): void {
+        for (let w of this.workers) {
+            w.terminate();
+        }
+        this.workers.length = 0;
+        recordedMessages.length = 0;
+        this.running = false;
+        this.population = null;
+    }
+}
+
 class MapElite{
     map:any;
     mapSize:number;
+    evaluator:Evaluator;
 
     constructor(){
         this.map = {};
         this.mapSize = 0;
+        this.evaluator = new Evaluator();
     }
 
-    assignMap(c:Chromosome):void{
+    randomInitailzie(): void {
+        debugLog("Initializing The Map.\n");
+        let chromosomes:Chromosome[] = [];
+        for (let i: number = 0; i < parameters.initializationSize; i++) {
+            let c: Chromosome = new Chromosome();
+            c.randomInitialize(parameters.sequenceSize, parameters.maxValue);
+            chromosomes.push(c);
+        }
+        this.evaluator.startEvaluation(chromosomes, parameters);
+    }
+
+    updateMap():void{
+        if(this.evaluator.running && !this.evaluator.checkDone()){
+            return;
+        }
+        if(this.evaluator.running){
+            let pop:Chromosome[] = this.evaluator.finishEvaluation();
+            for(let c of pop){
+                this.assignMap(c);
+            }
+        }
+        debugLog("Map Size: " + this.mapSize + "\n");
+        debugLog("########################################\n");
+        let tempBest: Chromosome = getBestChromosome();
+        debugLog("Best Chromosome: " + JSON.stringify(generateTalakatScript(tempBest.spawnerSequence, tempBest.scriptSequence)) + "\n");
+        debugLog("Fitness: " + tempBest.fitness + "\n");
+        debugLog("Constraints: " + tempBest.constraints + "\n");
+        debugLog("Behaviors: " + tempBest.behavior + "\n");
+        debugLog("########################################\n");
+        let pop:Chromosome[] = [];
+        while (pop.length < parameters.populationSize){
+            let newChromosomes:Chromosome[] = [];
+            if(random(0.0, 1.0) < parameters.eliteProb){
+                newChromosomes.push(this.randomSelect().best.clone());
+                newChromosomes.push(this.randomSelect().best.clone());
+            }
+            else{
+                newChromosomes = this.rankSelect().population.selectChromosomes();
+            }
+
+            if (random(0.0, 1.0) < parameters.crossover) {
+                newChromosomes = newChromosomes[0].crossover(newChromosomes[1]);
+            }
+            if (random(0.0, 1.0) < parameters.mutation) {
+                newChromosomes[0] = newChromosomes[0].mutate(parameters.mutationSize, parameters.maxValue);
+            }
+            if (random(0.0, 1.0) < parameters.mutation) {
+                newChromosomes[1] = newChromosomes[1].mutate(parameters.mutationSize, parameters.maxValue);
+            }
+            pop.push(newChromosomes[0]);
+            pop.push(newChromosomes[1]);
+        }
+        this.evaluator.startEvaluation(pop, parameters);
+    }
+
+    private assignMap(c: Chromosome):void{
         let index:string = "";
         index += Math.floor(c.behavior[0] * 100) + "," + 
             Math.floor(c.behavior[1] * 100) + "," + 
             Math.floor(c.behavior[2] * 100) + "," +
             Math.floor(c.behavior[3] * 100);
         if(this.map[index] != undefined){
-            if(this.map[index].fitness < c.fitness){
-                this.map[index].fitness;
+            if(this.map[index].best.fitness + this.map[index].best.constraints < c.fitness + c.constraints){
+                this.map[index].best = c;
             }
         }
         else{
-            this.map[index] = c;
+            this.map[index] = new Elite(c);
             this.mapSize += 1;
         }
+        this.map[index].population.addChromosome(c, parameters.populationSize);
     }
-
-    select():Chromosome{
-        let keys:string[] = [];
-        for(let k in this.map){
+    private randomSelect():Elite{
+        let keys: string[] = [];
+        for (let k in this.map) {
             keys.push(k);
         }
         return this.map[keys[Math.floor(random(0, keys.length))]];
+    }
+
+    private rankSelect():Elite{
+        let keys:any[] = [];
+        for(let k in this.map){
+            keys.push({key:k, size:this.map[k].population.length});
+        }
+        keys.sort((a:any, b:any)=>{return b.size - a.size});
+        return this.map[rankSelection(keys).key];
     }
 
     getCloset(vector:number[]):Chromosome{
@@ -83,163 +238,70 @@ class MapElite{
                 closest = k;
             }
         }
-        return this.map[closest];
+        return this.map[closest].best;
     }
 }
 
 class Population{
-    generationNumber:number;
     population:Chromosome[];
-    mapElites:MapElite;
-    workers:Worker[];
 
-    constructor(mapElite:MapElite){
+    constructor(){
         this.population = [];
-        this.workers = [];
-        this.mapElites = mapElite;
-        this.generationNumber = 0;
     }
 
-    randomPopulation(size:number, sequenceSize:number, maxValue:number):void{
-        for(let i:number=0; i<size; i++){
-            let c:Chromosome = new Chromosome();
-            c.randomInitialize(sequenceSize, maxValue);
-            this.population.push(c);
+    addChromosome(c:Chromosome, maxSize:number):void{
+        this.population.sort((a: Chromosome, b: Chromosome) => { return (b.fitness + b.constraints) - (a.fitness + a.constraints) });
+        if(this.population.length >= maxSize){
+            this.population.splice(this.population.length - 1, 1);
         }
+        this.population.push(c);
     }
 
-    startNextPopulation(threads:number):void{
-        let chromoPerThread:number = Math.floor(this.population.length / threads);
-        for(let i:number=0; i<threads; i++){
-            let end:number = (i+1) * chromoPerThread;
-            if(i == threads - 1){
-                end = this.population.length;
-            }
-            let data:any = {id:[], parameters: parameters, input: []};
-            for(let j:number=i*chromoPerThread; j<end; j++){
-                data.id.push(this.population[j].id);
-                data.input.push(generateTalakatScript(this.population[j].spawnerSequence, this.population[j].scriptSequence));
-            }
-            let w: Worker = new Worker("js/evaluator.js");
-            w.postMessage(data);
-            w.onmessage = function (event) {
-                for(let i:number=0; i<event.data.id.length; i++){
-                    recordedMessages.push({
-                        id:event.data.id[i], 
-                        fitness:event.data.fitness[i],
-                        constraints: event.data.constraints[i], 
-                        behavior:event.data.behavior[i]
-                    });
-                }
-            }
-            this.workers.push(w);
-        }
-    }
-
-    checkNextPopulation():boolean{
-        return recordedMessages.length == this.population.length;
-    }
-
-    private assignFitness(msg:any):void{
-        for(let c of this.population){
-            if(c.id == msg.id){
-                c.fitness = msg.fitness;
-                c.behavior = msg.behavior;
-                c.constraints = msg.constraints;
-                return;
-            }
-        }
-    }
-
-    private select(population:Chromosome[]):Chromosome{
-        let rank:number[] = [];
-        let total:number = 0;
-        for(let i:number=0; i<population.length; i++){
-            rank.push(population.length - i);
-            total += population.length - i;
-        }
-        for(let i:number=0; i<population.length; i++){
-            rank[i] /= 1.0 * total;
-        }
-        for (let i: number = 1; i < population.length; i++) {
-            rank[i] += rank[i-1];
-        }
-        let randomValue:number = random(0.0, 1.0);
-        for(let i:number=0; i<rank.length; i++){
-            if(randomValue < rank[i]){
-                return population[i];
-            }
-        }
-        return population[population.length - 1];
-    }
-
-    getNextPopulation():Population{
-        for(let w of this.workers){
-            w.terminate();
-        }
-        this.workers.length = 0;
-        for(let msg of recordedMessages){
-            this.assignFitness(msg);
-        }
-        recordedMessages.length = 0;
-
+    selectChromosomes():Chromosome[]{
         let constraintsPop:Chromosome[] = [];
+        let normalPop:Chromosome[] = [];
         for(let c of this.population){
             if(c.constraints == 1){
-                this.mapElites.assignMap(c);
+                normalPop.push(c);
             }
             else{
                 constraintsPop.push(c);
             }
         }
         constraintsPop.sort((a: Chromosome, b: Chromosome) => { return b.constraints - a.constraints });
-        this.population.sort((a: Chromosome, b: Chromosome) => { return (b.fitness + b.constraints) - (a.fitness + a.constraints) });
-        let newPopulation:Population = new Population(this.mapElites);
-        while(newPopulation.population.length < this.population.length){
-            let newChromosomes: Chromosome[];
-            if(random(0.0, 1.0) < this.mapElites.mapSize / this.population.length){
-                newChromosomes = [this.mapElites.select().clone(), this.mapElites.select().clone()];
-            }
-            else{
-                if (random(0.0, 1.0) < constraintsPop.length / this.population.length){
-                    newChromosomes = [this.select(constraintsPop).clone(), this.select(constraintsPop).clone()];
-                }
-                else{
-                    newChromosomes = [this.select(this.population).clone(), this.select(this.population).clone()];
-                }
-            }
-            
-            if(random(0.0, 1.0) < parameters.crossover){
-                newChromosomes = newChromosomes[0].crossover(newChromosomes[1]);
-            }
-            if(random(0.0, 1.0) < parameters.mutation){
-                newChromosomes[0] = newChromosomes[0].mutate(parameters.mutationSize, parameters.maxValue);
-            }
-            if (random(0.0, 1.0) < parameters.mutation) {
-                newChromosomes[1] = newChromosomes[1].mutate(parameters.mutationSize, parameters.maxValue);
-            }
-            newPopulation.population.push(newChromosomes[0]);
-            newPopulation.population.push(newChromosomes[1]);
-        }
-        
-        newPopulation.population.splice(0, 1);
-        if(this.mapElites.mapSize > 0){
-            newPopulation.population.push(this.mapElites.select().clone());
+        normalPop.sort((a: Chromosome, b: Chromosome) => { return b.fitness - a.fitness });
+        let newChromosomes: Chromosome[];
+        if(random(0.0, 1.0) < normalPop.length / this.population.length){
+            newChromosomes = [rankSelection(normalPop).clone(), rankSelection(normalPop).clone()];
         }
         else{
-            newPopulation.population.push(constraintsPop[0].clone());
+            newChromosomes = [rankSelection(constraintsPop).clone(), rankSelection(constraintsPop).clone()];
         }
         
-        newPopulation.generationNumber = this.generationNumber + 1;
-        return newPopulation;
+        return newChromosomes;
     }
+}
 
-    terminate():void{
-        for (let w of this.workers) {
-            w.terminate();
-        }
-        this.workers.length = 0;
+function rankSelection(arary: any[]): any{
+    let rank: number[] = [];
+    let total: number = 0;
+    for (let i: number = 0; i < arary.length; i++) {
+        rank.push(arary.length - i);
+        total += arary.length - i;
     }
+    for (let i: number = 0; i < arary.length; i++) {
+        rank[i] /= 1.0 * total;
+    }
+    for (let i: number = 1; i < arary.length; i++) {
+        rank[i] += rank[i - 1];
+    }
+    let randomValue: number = random(0.0, 1.0);
+    for (let i: number = 0; i < rank.length; i++) {
+        if (randomValue < rank[i]) {
+            return arary[i];
+        }
+    }
+    return arary[arary.length - 1];
 }
 
 function generateTalakatScript(spawnerSequence:number[], scriptSequence:number[]){
@@ -262,25 +324,16 @@ function generateTalakatScript(spawnerSequence:number[], scriptSequence:number[]
 }
 
 function getBestChromosome(){
-    if (bestPopulation != null) {
-        let c: Chromosome = null;
-        if (bestPopulation.mapElites.mapSize > 0) {
-            c = bestPopulation.mapElites.getCloset([
-                parseInt((<HTMLInputElement>document.getElementById("entropy")).value),
-                parseInt((<HTMLInputElement>document.getElementById("risk")).value),
-                parseInt((<HTMLInputElement>document.getElementById("distribution")).value),
-                parseInt((<HTMLInputElement>document.getElementById("density")).value)]);
-        }
-        else {
-            c = bestPopulation.population[0];
-        }
-        return c;
-    }
-    return null;
+    return mapElite.getCloset([
+        parseInt((<HTMLInputElement>document.getElementById("entropy")).value),
+        parseInt((<HTMLInputElement>document.getElementById("risk")).value),
+        parseInt((<HTMLInputElement>document.getElementById("distribution")).value),
+        parseInt((<HTMLInputElement>document.getElementById("density")).value)]
+    );
 }
 
 function playBest(){
-    if (bestPopulation != null) {
+    if (mapElite != null && mapElite.mapSize > 0) {
         newWorld = new Talakat.World(parameters.width, parameters.height);
         let c:Chromosome = getBestChromosome();
         newWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence));
@@ -294,38 +347,27 @@ function stopBest(){
 function stopEvolution() {
     if (interval != null) {
         clearInterval(interval);
-        currentPopulation.terminate();
-        recordedMessages.length = 0;
+        mapElite.evaluator.terminate();
         debugLog("Evolution Stopped\n");
     }
 }
 
-function startEvolution(size:number, threads:number){
-    if(size == undefined){
+function startEvolution(populationSize:number, threads:number, initializationSize:number=100){
+    if(populationSize == undefined){
         return;
     }
     stopEvolution();
-    parameters.threads = threads;
-    currentPopulation = new Population(new MapElite());
-    currentPopulation.randomPopulation(size, parameters.sequenceSize, parameters.maxValue);
-    currentPopulation.startNextPopulation(parameters.threads);
+    parameters.threadNumbers = threads;
+    parameters.populationSize = populationSize;
+    parameters.initializationSize = initializationSize;
+    mapElite = new MapElite();
+    mapElite.randomInitailzie();
     interval = setInterval(updateEvolution, parameters.checkInterval);
     debugLog("Evolution Started\n");
 }
 
 function updateEvolution(){
-    if(currentPopulation.checkNextPopulation()){
-        bestPopulation = currentPopulation;
-        currentPopulation = currentPopulation.getNextPopulation();
-        currentPopulation.startNextPopulation(parameters.threads);
-        debugLog("###########" + " Generation " + bestPopulation.generationNumber + " " + "###########\n");
-        let c:Chromosome = getBestChromosome();
-        debugLog(JSON.stringify(generateTalakatScript(c.spawnerSequence, c.scriptSequence)) + "\n");
-        debugLog("Fitness: " + c.fitness + "\n");
-        debugLog("Constarint: " + c.constraints + "\n");
-        debugLog("Behavior: " + c.behavior + "\n");
-        debugLog("######################################\n");
-    }
+    mapElite.updateMap();
 }
 
 let keys: any = {

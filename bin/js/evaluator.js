@@ -321,11 +321,22 @@ function calculateDistribution(buckets) {
     }
     return result / buckets.length;
 }
-function calculateDensity(buckets, totalBullets) {
-    var result = 0;
+function getMaxBulletsBucket(buckets) {
+    var max = 0;
     for (var _i = 0, buckets_2 = buckets; _i < buckets_2.length; _i++) {
         var b = buckets_2[_i];
-        result += b.length / Math.max(totalBullets, 1);
+        if (b.length > max) {
+            max = b.length;
+        }
+    }
+    return max;
+}
+function calculateDensity(buckets) {
+    var result = 0;
+    var maxBullets = getMaxBulletsBucket(buckets);
+    for (var _i = 0, buckets_3 = buckets; _i < buckets_3.length; _i++) {
+        var b = buckets_3[_i];
+        result += b.length / Math.max(maxBullets, 1);
     }
     return result / buckets.length;
 }
@@ -444,22 +455,25 @@ function evaluateOne(id, parameters, input) {
         var buckets = calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets);
         risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
         distribution += calculateDistribution(buckets);
-        density += calculateDensity(buckets, currentNode.world.bullets.length);
+        density += calculateDensity(buckets);
         frames += 1.0;
         currentNode = currentNode.parent;
     }
-    if (numLoops > 0 || numBullets / numSpawners < 1) {
+    if (numLoops > 0 || numBullets / numSpawners < 1 ||
+        (ai.status == GameStatus.ALOTSPAWNERS ||
+            ai.status == GameStatus.SPAWNERSTOBULLETS ||
+            ai.status == GameStatus.TOOSLOW)) {
         return {
             id: id,
             fitness: 0,
             constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
-            behavior: [calculateBiEntropy(actionSequence), risk / frames, distribution / frames, density / frames]
+            behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
         };
     }
     return {
         id: id,
         fitness: getFitness(bestNode.world.boss.getHealth()),
         constraints: 1,
-        behavior: [calculateBiEntropy(actionSequence), risk / frames, distribution / frames, density / frames]
+        behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
     };
 }

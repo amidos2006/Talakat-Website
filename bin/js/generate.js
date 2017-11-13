@@ -1,7 +1,6 @@
 var recordedMessages = [];
 var interval = null;
-var currentPopulation = null;
-var bestPopulation = null;
+var mapElite = null;
 var spawnerGrammar;
 var scriptGrammar;
 var parameters;
@@ -25,11 +24,144 @@ function debugLog(text) {
     document.getElementById("debugText").textContent += text;
     document.getElementById("debugText").scrollTop = document.getElementById("debugText").scrollHeight;
 }
+var Elite = (function () {
+    function Elite(best) {
+        this.best = best;
+        this.population = new Population();
+    }
+    return Elite;
+}());
+var Evaluator = (function () {
+    function Evaluator() {
+        this.workers = [];
+        this.population = null;
+        this.running = false;
+    }
+    Evaluator.prototype.startEvaluation = function (chromosomes, param) {
+        debugLog("Evaluator Started.\n");
+        this.population = chromosomes;
+        this.running = true;
+        var chromoPerThread = Math.floor(this.population.length / param.threadNumbers);
+        for (var i = 0; i < param.threadNumbers; i++) {
+            var end = (i + 1) * chromoPerThread;
+            if (i == param.threadNumbers - 1) {
+                end = this.population.length;
+            }
+            var data = { id: [], parameters: param, input: [] };
+            for (var j = i * chromoPerThread; j < end; j++) {
+                data.id.push(this.population[j].id);
+                data.input.push(generateTalakatScript(this.population[j].spawnerSequence, this.population[j].scriptSequence));
+            }
+            var w = new Worker("js/evaluator.js");
+            w.postMessage(data);
+            w.onmessage = function (event) {
+                for (var i_1 = 0; i_1 < event.data.id.length; i_1++) {
+                    recordedMessages.push({
+                        id: event.data.id[i_1],
+                        fitness: event.data.fitness[i_1],
+                        constraints: event.data.constraints[i_1],
+                        behavior: event.data.behavior[i_1]
+                    });
+                }
+            };
+            this.workers.push(w);
+        }
+    };
+    Evaluator.prototype.checkDone = function () {
+        return recordedMessages.length >= this.population.length;
+    };
+    Evaluator.prototype.assignFitness = function (msg) {
+        for (var _i = 0, _a = this.population; _i < _a.length; _i++) {
+            var c = _a[_i];
+            if (c.id == msg.id) {
+                c.fitness = msg.fitness;
+                c.behavior = msg.behavior;
+                c.constraints = msg.constraints;
+                return;
+            }
+        }
+    };
+    Evaluator.prototype.finishEvaluation = function () {
+        for (var _i = 0, recordedMessages_1 = recordedMessages; _i < recordedMessages_1.length; _i++) {
+            var msg = recordedMessages_1[_i];
+            this.assignFitness(msg);
+        }
+        var evaluatedPop = this.population;
+        this.terminate();
+        debugLog("Evaluator Finished.\n");
+        return evaluatedPop;
+    };
+    Evaluator.prototype.terminate = function () {
+        for (var _i = 0, _a = this.workers; _i < _a.length; _i++) {
+            var w = _a[_i];
+            w.terminate();
+        }
+        this.workers.length = 0;
+        recordedMessages.length = 0;
+        this.running = false;
+        this.population = null;
+    };
+    return Evaluator;
+}());
 var MapElite = (function () {
     function MapElite() {
         this.map = {};
         this.mapSize = 0;
+        this.evaluator = new Evaluator();
     }
+    MapElite.prototype.randomInitailzie = function () {
+        debugLog("Initializing The Map.\n");
+        var chromosomes = [];
+        for (var i = 0; i < parameters.initializationSize; i++) {
+            var c = new Chromosome();
+            c.randomInitialize(parameters.sequenceSize, parameters.maxValue);
+            chromosomes.push(c);
+        }
+        this.evaluator.startEvaluation(chromosomes, parameters);
+    };
+    MapElite.prototype.updateMap = function () {
+        if (this.evaluator.running && !this.evaluator.checkDone()) {
+            return;
+        }
+        if (this.evaluator.running) {
+            var pop_1 = this.evaluator.finishEvaluation();
+            for (var _i = 0, pop_2 = pop_1; _i < pop_2.length; _i++) {
+                var c = pop_2[_i];
+                this.assignMap(c);
+            }
+        }
+        debugLog("Map Size: " + this.mapSize + "\n");
+        debugLog("########################################\n");
+        var tempBest = getBestChromosome();
+        debugLog("Best Chromosome: " + JSON.stringify(generateTalakatScript(tempBest.spawnerSequence, tempBest.scriptSequence)) + "\n");
+        debugLog("Fitness: " + tempBest.fitness + "\n");
+        debugLog("Constraints: " + tempBest.constraints + "\n");
+        debugLog("Behaviors: " + tempBest.behavior + "\n");
+        debugLog("########################################\n");
+        var pop = [];
+        while (pop.length < parameters.populationSize) {
+            var newChromosomes = [];
+            if (random(0.0, 1.0) < parameters.eliteProb) {
+                newChromosomes.push(this.randomSelect().best.clone());
+                newChromosomes.push(this.randomSelect().best.clone());
+            }
+            else {
+                newChromosomes = this.rankSelect().population.selectChromosomes();
+            }
+            if (random(0.0, 1.0) < parameters.crossover) {
+                newChromosomes = newChromosomes[0].crossover(newChromosomes[1]);
+            }
+            if (random(0.0, 1.0) < parameters.mutation) {
+                newChromosomes[0] = newChromosomes[0].mutate(parameters.mutationSize, parameters.maxValue);
+            }
+            if (random(0.0, 1.0) < parameters.mutation) {
+                newChromosomes[1] = newChromosomes[1].mutate(parameters.mutationSize, parameters.maxValue);
+            }
+            pop.push(newChromosomes[0]);
+            pop.push(newChromosomes[1]);
+        }
+        this.evaluator.startEvaluation(pop, parameters);
+    };
     MapElite.prototype.assignMap = function (c) {
         var index = "";
         index += Math.floor(c.behavior[0] * 100) + "," +
@@ -37,21 +169,30 @@ var MapElite = (function () {
             Math.floor(c.behavior[2] * 100) + "," +
             Math.floor(c.behavior[3] * 100);
         if (this.map[index] != undefined) {
-            if (this.map[index].fitness < c.fitness) {
-                this.map[index].fitness;
+            if (this.map[index].best.fitness + this.map[index].best.constraints < c.fitness + c.constraints) {
+                this.map[index].best = c;
             }
         }
         else {
-            this.map[index] = c;
+            this.map[index] = new Elite(c);
             this.mapSize += 1;
         }
+        this.map[index].population.addChromosome(c, parameters.populationSize);
     };
-    MapElite.prototype.select = function () {
+    MapElite.prototype.randomSelect = function () {
         var keys = [];
         for (var k in this.map) {
             keys.push(k);
         }
         return this.map[keys[Math.floor(random(0, keys.length))]];
+    };
+    MapElite.prototype.rankSelect = function () {
+        var keys = [];
+        for (var k in this.map) {
+            keys.push({ key: k, size: this.map[k].population.length });
+        }
+        keys.sort(function (a, b) { return b.size - a.size; });
+        return this.map[rankSelection(keys).key];
     };
     MapElite.prototype.getCloset = function (vector) {
         if (this.mapSize == 0) {
@@ -75,154 +216,67 @@ var MapElite = (function () {
                 closest = k;
             }
         }
-        return this.map[closest];
+        return this.map[closest].best;
     };
     return MapElite;
 }());
 var Population = (function () {
-    function Population(mapElite) {
+    function Population() {
         this.population = [];
-        this.workers = [];
-        this.mapElites = mapElite;
-        this.generationNumber = 0;
     }
-    Population.prototype.randomPopulation = function (size, sequenceSize, maxValue) {
-        for (var i = 0; i < size; i++) {
-            var c = new Chromosome();
-            c.randomInitialize(sequenceSize, maxValue);
-            this.population.push(c);
+    Population.prototype.addChromosome = function (c, maxSize) {
+        this.population.sort(function (a, b) { return (b.fitness + b.constraints) - (a.fitness + a.constraints); });
+        if (this.population.length >= maxSize) {
+            this.population.splice(this.population.length - 1, 1);
         }
+        this.population.push(c);
     };
-    Population.prototype.startNextPopulation = function (threads) {
-        var chromoPerThread = Math.floor(this.population.length / threads);
-        for (var i = 0; i < threads; i++) {
-            var end = (i + 1) * chromoPerThread;
-            if (i == threads - 1) {
-                end = this.population.length;
-            }
-            var data = { id: [], parameters: parameters, input: [] };
-            for (var j = i * chromoPerThread; j < end; j++) {
-                data.id.push(this.population[j].id);
-                data.input.push(generateTalakatScript(this.population[j].spawnerSequence, this.population[j].scriptSequence));
-            }
-            var w = new Worker("js/evaluator.js");
-            w.postMessage(data);
-            w.onmessage = function (event) {
-                for (var i_1 = 0; i_1 < event.data.id.length; i_1++) {
-                    recordedMessages.push({
-                        id: event.data.id[i_1],
-                        fitness: event.data.fitness[i_1],
-                        constraints: event.data.constraints[i_1],
-                        behavior: event.data.behavior[i_1]
-                    });
-                }
-            };
-            this.workers.push(w);
-        }
-    };
-    Population.prototype.checkNextPopulation = function () {
-        return recordedMessages.length == this.population.length;
-    };
-    Population.prototype.assignFitness = function (msg) {
+    Population.prototype.selectChromosomes = function () {
+        var constraintsPop = [];
+        var normalPop = [];
         for (var _i = 0, _a = this.population; _i < _a.length; _i++) {
             var c = _a[_i];
-            if (c.id == msg.id) {
-                c.fitness = msg.fitness;
-                c.behavior = msg.behavior;
-                c.constraints = msg.constraints;
-                return;
-            }
-        }
-    };
-    Population.prototype.select = function (population) {
-        var rank = [];
-        var total = 0;
-        for (var i = 0; i < population.length; i++) {
-            rank.push(population.length - i);
-            total += population.length - i;
-        }
-        for (var i = 0; i < population.length; i++) {
-            rank[i] /= 1.0 * total;
-        }
-        for (var i = 1; i < population.length; i++) {
-            rank[i] += rank[i - 1];
-        }
-        var randomValue = random(0.0, 1.0);
-        for (var i = 0; i < rank.length; i++) {
-            if (randomValue < rank[i]) {
-                return population[i];
-            }
-        }
-        return population[population.length - 1];
-    };
-    Population.prototype.getNextPopulation = function () {
-        for (var _i = 0, _a = this.workers; _i < _a.length; _i++) {
-            var w = _a[_i];
-            w.terminate();
-        }
-        this.workers.length = 0;
-        for (var _b = 0, recordedMessages_1 = recordedMessages; _b < recordedMessages_1.length; _b++) {
-            var msg = recordedMessages_1[_b];
-            this.assignFitness(msg);
-        }
-        recordedMessages.length = 0;
-        var constraintsPop = [];
-        for (var _c = 0, _d = this.population; _c < _d.length; _c++) {
-            var c = _d[_c];
             if (c.constraints == 1) {
-                this.mapElites.assignMap(c);
+                normalPop.push(c);
             }
             else {
                 constraintsPop.push(c);
             }
         }
         constraintsPop.sort(function (a, b) { return b.constraints - a.constraints; });
-        this.population.sort(function (a, b) { return (b.fitness + b.constraints) - (a.fitness + a.constraints); });
-        var newPopulation = new Population(this.mapElites);
-        while (newPopulation.population.length < this.population.length) {
-            var newChromosomes = void 0;
-            if (random(0.0, 1.0) < this.mapElites.mapSize / this.population.length) {
-                newChromosomes = [this.mapElites.select().clone(), this.mapElites.select().clone()];
-            }
-            else {
-                if (random(0.0, 1.0) < constraintsPop.length / this.population.length) {
-                    newChromosomes = [this.select(constraintsPop).clone(), this.select(constraintsPop).clone()];
-                }
-                else {
-                    newChromosomes = [this.select(this.population).clone(), this.select(this.population).clone()];
-                }
-            }
-            if (random(0.0, 1.0) < parameters.crossover) {
-                newChromosomes = newChromosomes[0].crossover(newChromosomes[1]);
-            }
-            if (random(0.0, 1.0) < parameters.mutation) {
-                newChromosomes[0] = newChromosomes[0].mutate(parameters.mutationSize, parameters.maxValue);
-            }
-            if (random(0.0, 1.0) < parameters.mutation) {
-                newChromosomes[1] = newChromosomes[1].mutate(parameters.mutationSize, parameters.maxValue);
-            }
-            newPopulation.population.push(newChromosomes[0]);
-            newPopulation.population.push(newChromosomes[1]);
-        }
-        newPopulation.population.splice(0, 1);
-        if (this.mapElites.mapSize > 0) {
-            newPopulation.population.push(this.mapElites.select().clone());
+        normalPop.sort(function (a, b) { return b.fitness - a.fitness; });
+        var newChromosomes;
+        if (random(0.0, 1.0) < normalPop.length / this.population.length) {
+            newChromosomes = [rankSelection(normalPop).clone(), rankSelection(normalPop).clone()];
         }
         else {
-            newPopulation.population.push(constraintsPop[0].clone());
+            newChromosomes = [rankSelection(constraintsPop).clone(), rankSelection(constraintsPop).clone()];
         }
-        newPopulation.generationNumber = this.generationNumber + 1;
-        return newPopulation;
-    };
-    Population.prototype.terminate = function () {
-        for (var _i = 0, _a = this.workers; _i < _a.length; _i++) {
-            var w = _a[_i];
-            w.terminate();
-        }
-        this.workers.length = 0;
+        return newChromosomes;
     };
     return Population;
 }());
+function rankSelection(arary) {
+    var rank = [];
+    var total = 0;
+    for (var i = 0; i < arary.length; i++) {
+        rank.push(arary.length - i);
+        total += arary.length - i;
+    }
+    for (var i = 0; i < arary.length; i++) {
+        rank[i] /= 1.0 * total;
+    }
+    for (var i = 1; i < arary.length; i++) {
+        rank[i] += rank[i - 1];
+    }
+    var randomValue = random(0.0, 1.0);
+    for (var i = 0; i < rank.length; i++) {
+        if (randomValue < rank[i]) {
+            return arary[i];
+        }
+    }
+    return arary[arary.length - 1];
+}
 function generateTalakatScript(spawnerSequence, scriptSequence) {
     var tempSequence = spawnerSequence.concat([]);
     var input = "{\"spawners\":{";
@@ -244,25 +298,15 @@ function generateTalakatScript(spawnerSequence, scriptSequence) {
     return JSON.parse(input);
 }
 function getBestChromosome() {
-    if (bestPopulation != null) {
-        var c = null;
-        if (bestPopulation.mapElites.mapSize > 0) {
-            c = bestPopulation.mapElites.getCloset([
-                parseInt(document.getElementById("entropy").value),
-                parseInt(document.getElementById("risk").value),
-                parseInt(document.getElementById("distribution").value),
-                parseInt(document.getElementById("density").value)
-            ]);
-        }
-        else {
-            c = bestPopulation.population[0];
-        }
-        return c;
-    }
-    return null;
+    return mapElite.getCloset([
+        parseInt(document.getElementById("entropy").value),
+        parseInt(document.getElementById("risk").value),
+        parseInt(document.getElementById("distribution").value),
+        parseInt(document.getElementById("density").value)
+    ]);
 }
 function playBest() {
-    if (bestPopulation != null) {
+    if (mapElite != null && mapElite.mapSize > 0) {
         newWorld = new Talakat.World(parameters.width, parameters.height);
         var c = getBestChromosome();
         newWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence));
@@ -274,36 +318,26 @@ function stopBest() {
 function stopEvolution() {
     if (interval != null) {
         clearInterval(interval);
-        currentPopulation.terminate();
-        recordedMessages.length = 0;
+        mapElite.evaluator.terminate();
         debugLog("Evolution Stopped\n");
     }
 }
-function startEvolution(size, threads) {
-    if (size == undefined) {
+function startEvolution(populationSize, threads, initializationSize) {
+    if (initializationSize === void 0) { initializationSize = 100; }
+    if (populationSize == undefined) {
         return;
     }
     stopEvolution();
-    parameters.threads = threads;
-    currentPopulation = new Population(new MapElite());
-    currentPopulation.randomPopulation(size, parameters.sequenceSize, parameters.maxValue);
-    currentPopulation.startNextPopulation(parameters.threads);
+    parameters.threadNumbers = threads;
+    parameters.populationSize = populationSize;
+    parameters.initializationSize = initializationSize;
+    mapElite = new MapElite();
+    mapElite.randomInitailzie();
     interval = setInterval(updateEvolution, parameters.checkInterval);
     debugLog("Evolution Started\n");
 }
 function updateEvolution() {
-    if (currentPopulation.checkNextPopulation()) {
-        bestPopulation = currentPopulation;
-        currentPopulation = currentPopulation.getNextPopulation();
-        currentPopulation.startNextPopulation(parameters.threads);
-        debugLog("###########" + " Generation " + bestPopulation.generationNumber + " " + "###########\n");
-        var c = getBestChromosome();
-        debugLog(JSON.stringify(generateTalakatScript(c.spawnerSequence, c.scriptSequence)) + "\n");
-        debugLog("Fitness: " + c.fitness + "\n");
-        debugLog("Constarint: " + c.constraints + "\n");
-        debugLog("Behavior: " + c.behavior + "\n");
-        debugLog("######################################\n");
-    }
+    mapElite.updateMap();
 }
 var keys = {
     LEFT_ARROW: 37,

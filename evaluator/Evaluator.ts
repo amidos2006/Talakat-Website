@@ -104,10 +104,21 @@ function calculateDistribution(buckets: Talakat.Bullet[][]):number{
     return result/buckets.length;
 }
 
-function calculateDensity(buckets: Talakat.Bullet[][], totalBullets:number):number{
-    let result:number = 0;
+function getMaxBulletsBucket(buckets:Talakat.Bullet[][]){
+    let max:number = 0;
     for(let b of buckets){
-        result += b.length / Math.max(totalBullets, 1);
+        if(b.length > max){
+            max = b.length;
+        }
+    }
+    return max;
+}
+
+function calculateDensity(buckets: Talakat.Bullet[][]):number{
+    let result:number = 0;
+    let maxBullets: number = getMaxBulletsBucket(buckets);
+    for(let b of buckets){
+        result += b.length / Math.max(maxBullets, 1);
     }
     return result / buckets.length;
 }
@@ -236,17 +247,20 @@ function evaluateOne(id:number, parameters:any, input:any){
             currentNode.world.bullets);
         risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
         distribution += calculateDistribution(buckets);
-        density += calculateDensity(buckets, currentNode.world.bullets.length);
+        density += calculateDensity(buckets);
         frames += 1.0;
         currentNode = currentNode.parent;
     }
 
-    if (numLoops > 0 || numBullets / numSpawners < 1) {
+    if (numLoops > 0 || numBullets / numSpawners < 1|| 
+        (ai.status == GameStatus.ALOTSPAWNERS || 
+            ai.status == GameStatus.SPAWNERSTOBULLETS || 
+            ai.status == GameStatus.TOOSLOW)) {
         return {
             id: id,
             fitness: 0,
             constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
-            behavior: [calculateBiEntropy(actionSequence), risk / frames, distribution / frames, density / frames]
+            behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
         };
     }
 
@@ -254,6 +268,6 @@ function evaluateOne(id:number, parameters:any, input:any){
         id:id, 
         fitness: getFitness(bestNode.world.boss.getHealth()),
         constraints: 1,
-        behavior: [calculateBiEntropy(actionSequence), risk/frames, distribution/frames, density/frames]
+        behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
     };
 }

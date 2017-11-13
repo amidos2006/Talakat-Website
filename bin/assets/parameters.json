@@ -1,6 +1,7 @@
 {
     "width": 400,
     "height": 640,
+
     "maxDepth": 5,
     "agent": "AStarPlanner",
     "agentType": "time",
@@ -11,12 +12,19 @@
     "maxNumSpawners": 100,
     "bulletToSpawner": 2,
     "repeatingAction": 4,
-    "checkInterval": 1000,
-    "sequenceSize": 23,
-    "crossover": 0.7,
-    "mutation": 0.1,
-    "mutationSize": 1,
-    "maxValue": 50,
     "bucketsX": 8,
-    "bucketsY": 10
+    "bucketsY": 10,
+
+    "sequenceSize": 23,
+    "maxValue": 50,
+
+    "populationSize": 30,
+    "initializationSize": 100,
+    "threadNumbers": 2,
+    "eliteProb": 0.75,
+    "checkInterval": 1000,
+    
+    "crossover": 0.7,
+    "mutation": 0.3,
+    "mutationSize": 1
 }
