@@ -26,7 +26,9 @@ function debugLog(text) {
 }
 var Elite = (function () {
     function Elite(best) {
-        this.best = best;
+        if (best.constraints == 1) {
+            this.best = best;
+        }
         this.population = new Population();
     }
     return Elite;
@@ -60,6 +62,7 @@ var Evaluator = (function () {
                         id: event.data.id[i_1],
                         fitness: event.data.fitness[i_1],
                         constraints: event.data.constraints[i_1],
+                        errorType: event.data.errorType[i_1],
                         behavior: event.data.behavior[i_1]
                     });
                 }
@@ -77,6 +80,7 @@ var Evaluator = (function () {
                 c.fitness = msg.fitness;
                 c.behavior = msg.behavior;
                 c.constraints = msg.constraints;
+                c.errorType = msg.errorType;
                 return;
             }
         }
@@ -141,12 +145,17 @@ var MapElite = (function () {
         var pop = [];
         while (pop.length < parameters.populationSize) {
             var newChromosomes = [];
-            if (random(0.0, 1.0) < parameters.eliteProb) {
-                newChromosomes.push(this.randomSelect().best.clone());
-                newChromosomes.push(this.randomSelect().best.clone());
+            var elites = this.randomSelect();
+            if (random(0.0, 1.0) < elites.length / this.mapSize) {
+                newChromosomes.push(elites[Math.floor(random(0, elites.length))].best.clone());
+                newChromosomes.push(elites[Math.floor(random(0, elites.length))].best.clone());
             }
             else {
                 newChromosomes = this.rankSelect().population.selectChromosomes();
+                if (random(0.0, 1.0) < parameters.interpopProb) {
+                    var tempChromosomes = this.rankSelect().population.selectChromosomes();
+                    newChromosomes[0] = tempChromosomes[0];
+                }
             }
             if (random(0.0, 1.0) < parameters.crossover) {
                 newChromosomes = newChromosomes[0].crossover(newChromosomes[1]);
@@ -164,12 +173,13 @@ var MapElite = (function () {
     };
     MapElite.prototype.assignMap = function (c) {
         var index = "";
-        index += Math.floor(c.behavior[0] * 100) + "," +
-            Math.floor(c.behavior[1] * 100) + "," +
-            Math.floor(c.behavior[2] * 100) + "," +
-            Math.floor(c.behavior[3] * 100);
+        index += Math.floor(c.behavior[0] * parameters.dimensionSize) + "," +
+            Math.floor(c.behavior[1] * parameters.dimensionSize) + "," +
+            Math.floor(c.behavior[2] * parameters.dimensionSize) + "," +
+            Math.floor(c.behavior[3] * parameters.dimensionSize);
         if (this.map[index] != undefined) {
-            if (this.map[index].best.fitness + this.map[index].best.constraints < c.fitness + c.constraints) {
+            if (c.constraints == 1 && (this.map[index].best == null ||
+                this.map[index].best.fitness < c.fitness)) {
                 this.map[index].best = c;
             }
         }
@@ -180,16 +190,18 @@ var MapElite = (function () {
         this.map[index].population.addChromosome(c, parameters.populationSize);
     };
     MapElite.prototype.randomSelect = function () {
-        var keys = [];
+        var elites = [];
         for (var k in this.map) {
-            keys.push(k);
+            if (this.map[k].best != null) {
+                elites.push(this.map[k]);
+            }
         }
-        return this.map[keys[Math.floor(random(0, keys.length))]];
+        return elites;
     };
     MapElite.prototype.rankSelect = function () {
         var keys = [];
         for (var k in this.map) {
-            keys.push({ key: k, size: this.map[k].population.length });
+            keys.push({ key: k, size: this.map[k].population.length + random(0.0, 0.1) });
         }
         keys.sort(function (a, b) { return b.size - a.size; });
         return this.map[rankSelection(keys).key];
@@ -216,7 +228,7 @@ var MapElite = (function () {
                 closest = k;
             }
         }
-        return this.map[closest].best;
+        return this.map[closest];
     };
     return MapElite;
 }());
@@ -298,16 +310,20 @@ function generateTalakatScript(spawnerSequence, scriptSequence) {
     return JSON.parse(input);
 }
 function getBestChromosome() {
-    return mapElite.getCloset([
+    var elite = mapElite.getCloset([
         parseInt(document.getElementById("entropy").value),
         parseInt(document.getElementById("risk").value),
         parseInt(document.getElementById("distribution").value),
         parseInt(document.getElementById("density").value)
     ]);
+    if (elite.best != null) {
+        return elite.best;
+    }
+    return elite.population.population[0];
 }
 function playBest() {
     if (mapElite != null && mapElite.mapSize > 0) {
-        newWorld = new Talakat.World(parameters.width, parameters.height);
+        newWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
         var c = getBestChromosome();
         newWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence));
     }
@@ -430,6 +446,7 @@ var Chromosome = (function () {
         this.fitness = null;
         this.constraints = null;
         this.behavior = null;
+        this.errorType = null;
     }
     Chromosome.prototype.randomInitialize = function (sequenceLength, maxValue) {
         this.spawnerSequence = [];

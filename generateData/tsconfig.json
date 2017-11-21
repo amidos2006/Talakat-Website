@@ -3,14 +3,14 @@
 		"target": "es5",
 		"sourceMap": false,
 		"outDir": "bin",
-		"outFile": "../bin/js/generate.js"
+		"outFile": "../bin/js/generateData.js"
 	},
 	"include": [
 		"Generate.ts",
-		"Chromosome.ts",
-		"../definitions/*"
+		"Chromosome.ts"
 	],
 	"exclude": [
-		"../generateData/"
+		"../generate/",
+		"../definitions/*"
 	]
 }

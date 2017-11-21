@@ -94,36 +94,36 @@ function calculateBiEntropy(actionSequence:number[]):number{
     return entropy / 3.0;
 }
 
-function calculateDistribution(buckets: Talakat.Bullet[][]):number{
+function calculateDistribution(buckets: number[]):number{
     let result:number = 0;
     for(let b of buckets){
-        if(b.length > 0){
+        if(b > 0){
             result += 1.0;
         }
     }
     return result/buckets.length;
 }
 
-function getMaxBulletsBucket(buckets:Talakat.Bullet[][]){
+function getMaxBulletsBucket(buckets:number[]){
     let max:number = 0;
     for(let b of buckets){
-        if(b.length > max){
-            max = b.length;
+        if(b > max){
+            max = b;
         }
     }
     return max;
 }
 
-function calculateDensity(buckets: Talakat.Bullet[][]):number{
+function calculateDensity(buckets:number[]):number{
     let result:number = 0;
     let maxBullets: number = getMaxBulletsBucket(buckets);
     for(let b of buckets){
-        result += b.length / Math.max(maxBullets, 1);
+        result += b / Math.max(maxBullets, 1);
     }
     return result / buckets.length;
 }
 
-function calculateRisk(player:Talakat.Player, width:number, height:number, buckets:Talakat.Bullet[][]){
+function calculateRisk(player:Talakat.Player, width:number, height:number, buckets:number[]):number{
     let result:number = 0;
     let x:number = Math.floor(player.x / width);
     let y:number = Math.floor(player.y / height);
@@ -136,7 +136,7 @@ function calculateRisk(player:Talakat.Player, width:number, height:number, bucke
             if(index < 0){
                 index = 0;
             }
-            if(buckets[index].length > 0){
+            if(buckets[index] > 0){
                 result += 1.0;
             }
         }
@@ -144,11 +144,15 @@ function calculateRisk(player:Talakat.Player, width:number, height:number, bucke
     return result/9.0;
 }
 
-function calculateBuckets(width:number, height:number, bullets:Talakat.Bullet[]):Talakat.Bullet[][]{
-    let buckets:Talakat.Bullet[][] = [];
-    for(let i:number=0; i<width*height; i++){
-        buckets.push([]);
+function initializeBuckets(width:number, height:number):number[]{
+    let buckets: number[] = [];
+    for (let i: number = 0; i < width * height; i++) {
+        buckets.push(0);
     }
+    return buckets;
+}
+
+function calculateBuckets(width:number, height:number, bullets:Talakat.Bullet[], buckets:number[]):void{
     let p: Talakat.Point = new Talakat.Point();
     for(let b of bullets){
         let indeces: number[] = [];
@@ -185,10 +189,9 @@ function calculateBuckets(width:number, height:number, bullets:Talakat.Bullet[])
             if(index >= buckets.length){
                 index = buckets.length - 1;
             }
-            buckets[index].push(b);
+            buckets[index] += 1;
         }
     }
-    return buckets;
 }
 
 function getConstraints(loops:number, bullets:number, bossHealth:number):number{
@@ -200,13 +203,15 @@ function getFitness(bossHealth:number):number{
 }
 
 function evaluate(id:number[], parameters:any, input:any[]){
-    let results:any = {id:[], fitness:[], constraints:[], behavior:[]};
+    let results:any = {id:[], fitness:[], constraints:[], behavior:[], errorType:[], bossHealth:[]};
     for(let i:number=0; i<id.length; i++){
         let temp:any = evaluateOne(id[i], parameters, input[i]);
         results.id.push(temp.id);
         results.fitness.push(temp.fitness);
         results.constraints.push(temp.constraints);
         results.behavior.push(temp.behavior);
+        results.bossHealth.push(temp.bossHealth);
+        results.errorType.push(temp.errorType);
     }
     this.postMessage(results);
 }
@@ -228,7 +233,7 @@ function evaluateOne(id:number, parameters:any, input:any){
         numSpawners += 1;
     }
 
-    let startWorld: Talakat.World = new Talakat.World(parameters.width, parameters.height);
+    let startWorld: Talakat.World = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
     let ai: Planner = new self[parameters.agent](parameters);
     ai.initialize();
@@ -238,28 +243,40 @@ function evaluateOne(id:number, parameters:any, input:any){
     let distribution: number = 0;
     let density: number = 0;
     let frames: number = 0;
+    let calculationFrames: number = parameters.calculationFrames;
+    let bucketWidth: number = parameters.width / parameters.bucketsX;
+    let bucketHeight: number = parameters.height / parameters.bucketsY;
+    let buckets: number[] = initializeBuckets(bucketWidth, bucketHeight);
     let actionSequence: number[] = bestNode.getSequence(parameters.repeatingAction);
     let currentNode:TreeNode = bestNode;
     while (currentNode.parent != null){
-        let bucketWidth:number = parameters.width / parameters.bucketsX;
-        let bucketHeight:number = parameters.height / parameters.bucketsY;
-        let buckets: Talakat.Bullet[][] = calculateBuckets(bucketWidth, bucketHeight, 
-            currentNode.world.bullets);
-        risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
-        distribution += calculateDistribution(buckets);
-        density += calculateDensity(buckets);
-        frames += 1.0;
+        if(calculationFrames > 0){
+            calculationFrames -= 1;
+            calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets, buckets);
+        }
+        else{
+            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            distribution += calculateDistribution(buckets);
+            density += calculateDensity(buckets);
+
+            calculationFrames = parameters.calculationFrames;
+            frames += 1.0;
+            buckets = initializeBuckets(bucketWidth, bucketHeight);
+        }
         currentNode = currentNode.parent;
     }
 
-    if (numLoops > 0 || numBullets / numSpawners < 1|| 
+    if (//numLoops > 0 || numBullets / numSpawners < 1|| 
         (ai.status == GameStatus.ALOTSPAWNERS || 
             ai.status == GameStatus.SPAWNERSTOBULLETS || 
             ai.status == GameStatus.TOOSLOW)) {
         return {
             id: id,
             fitness: 0,
-            constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
+            bossHealth: bestNode.world.boss.getHealth(),
+            errorType: ai.status,
+            // constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
+            constraints: getFitness(bestNode.world.boss.getHealth()),
             behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
         };
     }
@@ -267,6 +284,8 @@ function evaluateOne(id:number, parameters:any, input:any){
     return {
         id:id, 
         fitness: getFitness(bestNode.world.boss.getHealth()),
+        bossHealth: bestNode.world.boss.getHealth(),
+        errorType: ai.status,
         constraints: 1,
         behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
     };

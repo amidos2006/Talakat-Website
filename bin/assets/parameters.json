@@ -6,23 +6,30 @@
     "agent": "AStarPlanner",
     "agentType": "time",
     "agentValue": 30,
-    "maxStepTime": 20,
+    "maxStepTime": 100,
     "maxAgentTime": 30000,
     "maxSpawnerFrames": 10,
     "maxNumSpawners": 100,
+    "maxNumBullets": 500,
     "bulletToSpawner": 2,
+    "calculationFrames": 20,
     "repeatingAction": 4,
+
+    "saveFrames": "results/",
+    "totalLevelsToTest": 1000,
+
     "bucketsX": 8,
     "bucketsY": 10,
 
-    "sequenceSize": 23,
+    "sequenceSize": 37,
     "maxValue": 50,
 
     "populationSize": 30,
     "initializationSize": 100,
     "threadNumbers": 2,
-    "eliteProb": 0.75,
+    "interpopProb": 0.5,
     "checkInterval": 1000,
+    "dimensionSize": 10,
     
     "crossover": 0.7,
     "mutation": 0.3,

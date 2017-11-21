@@ -7,24 +7,28 @@ class Chromosome {
     constraints:number;
     fitness:number;
     behavior:number[];
-    errorType:any;
+    bossHealth:number;
 
     constructor() {
         this.id = ++Chromosome.totalID;
         this.spawnerSequence = [];
         this.scriptSequence = [];
         this.fitness = null;
+        this.bossHealth = null;
         this.constraints = null;
         this.behavior = null;
-        this.errorType = null;
+    }
+
+    random(min: number, max: number): number {
+        return Math.random() * (max - min) + min;
     }
 
     randomInitialize(sequenceLength:number, maxValue:number): void {
         this.spawnerSequence = [];
         this.scriptSequence = [];
         for(let i:number=0; i<sequenceLength; i++){
-            this.spawnerSequence.push(Math.floor(random(0, maxValue)));
-            this.scriptSequence.push(Math.floor(random(1, maxValue)));
+            this.spawnerSequence.push(Math.floor(this.random(0, maxValue)));
+            this.scriptSequence.push(Math.floor(this.random(1, maxValue)));
         }
     }
 
@@ -50,8 +54,8 @@ class Chromosome {
         children[1].fitness = null;
         children[1].constraints = null;
         children[1].behavior = null;
-        if(random(0, 1.0) < 0.5){
-            let swapPoint: number = floor(random(0, children[0].spawnerSequence.length));
+        if (this.random(0, 1.0) < 0.5){
+            let swapPoint: number = Math.floor(this.random(0, children[0].spawnerSequence.length));
             for (let i: number = 0; i < children[0].spawnerSequence.length; i++) {
                 if (i > swapPoint) {
                     let temp: number = children[0].spawnerSequence[i];
@@ -60,8 +64,8 @@ class Chromosome {
                 }
             }
         }
-        if(random(0, 1.0) < 0.5){
-            let swapPoint:number = floor(random(0, children[0].scriptSequence.length));
+        if (this.random(0, 1.0) < 0.5){
+            let swapPoint: number = Math.floor(this.random(0, children[0].scriptSequence.length));
             for (let i: number = 0; i < children[0].scriptSequence.length; i++) {
                 if (i > swapPoint) {
                     let temp: number = children[0].scriptSequence[i];
@@ -80,9 +84,9 @@ class Chromosome {
         mutated.constraints = null;
         mutated.behavior = null;
         
-        if(random(0, 1.0) < 0.5){
+        if (this.random(0, 1.0) < 0.5){
             for (let i: number = 0; i < mutated.spawnerSequence.length; i++) {
-                mutated.spawnerSequence[i] += Math.round(random(-mutationSize, mutationSize));
+                mutated.spawnerSequence[i] += Math.round(this.random(-mutationSize, mutationSize));
                 if (mutated.spawnerSequence[i] < 0) {
                     mutated.spawnerSequence[i] += maxValue;
                 }
@@ -91,9 +95,9 @@ class Chromosome {
                 }
             }
         }
-        if (random(0, 1.0) < 0.5) {
+        if (this.random(0, 1.0) < 0.5) {
             for (let i: number = 0; i < mutated.scriptSequence.length; i++) {
-                mutated.scriptSequence[i] += Math.round(random(-mutationSize, mutationSize));
+                mutated.scriptSequence[i] += Math.round(this.random(-mutationSize, mutationSize));
                 if (mutated.scriptSequence[i] < 0) {
                     mutated.scriptSequence[i] += maxValue;
                 }

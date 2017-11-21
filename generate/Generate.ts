@@ -32,7 +32,9 @@ class Elite{
     population:Population;
 
     constructor(best:Chromosome){
-        this.best = best;
+        if(best.constraints == 1){
+            this.best = best;
+        }
         this.population = new Population();
     }
 }
@@ -73,6 +75,7 @@ class Evaluator{
                         id: event.data.id[i],
                         fitness: event.data.fitness[i],
                         constraints: event.data.constraints[i],
+                        errorType: event.data.errorType[i],
                         behavior: event.data.behavior[i]
                     });
                 }
@@ -91,6 +94,7 @@ class Evaluator{
                 c.fitness = msg.fitness;
                 c.behavior = msg.behavior;
                 c.constraints = msg.constraints;
+                c.errorType = msg.errorType;
                 return;
             }
         }
@@ -160,12 +164,17 @@ class MapElite{
         let pop:Chromosome[] = [];
         while (pop.length < parameters.populationSize){
             let newChromosomes:Chromosome[] = [];
-            if(random(0.0, 1.0) < parameters.eliteProb){
-                newChromosomes.push(this.randomSelect().best.clone());
-                newChromosomes.push(this.randomSelect().best.clone());
+            let elites:Elite[] = this.randomSelect();
+            if(random(0.0, 1.0) < elites.length / this.mapSize){
+                newChromosomes.push(elites[Math.floor(random(0, elites.length))].best.clone());
+                newChromosomes.push(elites[Math.floor(random(0, elites.length))].best.clone());
             }
             else{
                 newChromosomes = this.rankSelect().population.selectChromosomes();
+                if (random(0.0, 1.0) < parameters.interpopProb){
+                    let tempChromosomes: Chromosome[] = this.rankSelect().population.selectChromosomes();
+                    newChromosomes[0] = tempChromosomes[0];
+                }
             }
 
             if (random(0.0, 1.0) < parameters.crossover) {
@@ -185,12 +194,13 @@ class MapElite{
 
     private assignMap(c: Chromosome):void{
         let index:string = "";
-        index += Math.floor(c.behavior[0] * 100) + "," + 
-            Math.floor(c.behavior[1] * 100) + "," + 
-            Math.floor(c.behavior[2] * 100) + "," +
-            Math.floor(c.behavior[3] * 100);
+        index += Math.floor(c.behavior[0] * parameters.dimensionSize) + "," + 
+            Math.floor(c.behavior[1] * parameters.dimensionSize) + "," + 
+            Math.floor(c.behavior[2] * parameters.dimensionSize) + "," +
+            Math.floor(c.behavior[3] * parameters.dimensionSize);
         if(this.map[index] != undefined){
-            if(this.map[index].best.fitness + this.map[index].best.constraints < c.fitness + c.constraints){
+            if(c.constraints == 1 && (this.map[index].best == null || 
+                this.map[index].best.fitness < c.fitness)){
                 this.map[index].best = c;
             }
         }
@@ -200,24 +210,27 @@ class MapElite{
         }
         this.map[index].population.addChromosome(c, parameters.populationSize);
     }
-    private randomSelect():Elite{
-        let keys: string[] = [];
+    
+    private randomSelect():Elite[]{
+        let elites: Elite[] = [];
         for (let k in this.map) {
-            keys.push(k);
+            if(this.map[k].best != null){
+                elites.push(this.map[k]);
+            }
         }
-        return this.map[keys[Math.floor(random(0, keys.length))]];
+        return elites;
     }
 
     private rankSelect():Elite{
         let keys:any[] = [];
         for(let k in this.map){
-            keys.push({key:k, size:this.map[k].population.length});
+            keys.push({key:k, size:this.map[k].population.length + random(0.0, 0.1)});
         }
         keys.sort((a:any, b:any)=>{return b.size - a.size});
         return this.map[rankSelection(keys).key];
     }
 
-    getCloset(vector:number[]):Chromosome{
+    getCloset(vector:number[]):Elite{
         if(this.mapSize == 0){
             return null;
         }
@@ -238,7 +251,7 @@ class MapElite{
                 closest = k;
             }
         }
-        return this.map[closest].best;
+        return this.map[closest];
     }
 }
 
@@ -324,17 +337,21 @@ function generateTalakatScript(spawnerSequence:number[], scriptSequence:number[]
 }
 
 function getBestChromosome(){
-    return mapElite.getCloset([
+    let elite:Elite =  mapElite.getCloset([
         parseInt((<HTMLInputElement>document.getElementById("entropy")).value),
         parseInt((<HTMLInputElement>document.getElementById("risk")).value),
         parseInt((<HTMLInputElement>document.getElementById("distribution")).value),
         parseInt((<HTMLInputElement>document.getElementById("density")).value)]
     );
+    if(elite.best != null){
+        return elite.best;
+    }
+    return elite.population.population[0];
 }
 
 function playBest(){
     if (mapElite != null && mapElite.mapSize > 0) {
-        newWorld = new Talakat.World(parameters.width, parameters.height);
+        newWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
         let c:Chromosome = getBestChromosome();
         newWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence));
     }

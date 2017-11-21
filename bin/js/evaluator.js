@@ -315,7 +315,7 @@ function calculateDistribution(buckets) {
     var result = 0;
     for (var _i = 0, buckets_1 = buckets; _i < buckets_1.length; _i++) {
         var b = buckets_1[_i];
-        if (b.length > 0) {
+        if (b > 0) {
             result += 1.0;
         }
     }
@@ -325,8 +325,8 @@ function getMaxBulletsBucket(buckets) {
     var max = 0;
     for (var _i = 0, buckets_2 = buckets; _i < buckets_2.length; _i++) {
         var b = buckets_2[_i];
-        if (b.length > max) {
-            max = b.length;
+        if (b > max) {
+            max = b;
         }
     }
     return max;
@@ -336,7 +336,7 @@ function calculateDensity(buckets) {
     var maxBullets = getMaxBulletsBucket(buckets);
     for (var _i = 0, buckets_3 = buckets; _i < buckets_3.length; _i++) {
         var b = buckets_3[_i];
-        result += b.length / Math.max(maxBullets, 1);
+        result += b / Math.max(maxBullets, 1);
     }
     return result / buckets.length;
 }
@@ -353,18 +353,21 @@ function calculateRisk(player, width, height, buckets) {
             if (index < 0) {
                 index = 0;
             }
-            if (buckets[index].length > 0) {
+            if (buckets[index] > 0) {
                 result += 1.0;
             }
         }
     }
     return result / 9.0;
 }
-function calculateBuckets(width, height, bullets) {
+function initializeBuckets(width, height) {
     var buckets = [];
     for (var i = 0; i < width * height; i++) {
-        buckets.push([]);
+        buckets.push(0);
     }
+    return buckets;
+}
+function calculateBuckets(width, height, bullets, buckets) {
     var p = new Talakat.Point();
     for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
         var b = bullets_1[_i];
@@ -401,10 +404,9 @@ function calculateBuckets(width, height, bullets) {
             if (index_1 >= buckets.length) {
                 index_1 = buckets.length - 1;
             }
-            buckets[index_1].push(b);
+            buckets[index_1] += 1;
         }
     }
-    return buckets;
 }
 function getConstraints(loops, bullets, bossHealth) {
     return 0.4 / (loops + 1) + 0.4 * bullets + 0.2 * (1 - bossHealth);
@@ -412,14 +414,44 @@ function getConstraints(loops, bullets, bossHealth) {
 function getFitness(bossHealth) {
     return (1 - bossHealth);
 }
+function saveGameFrames(id, lastNode) {
+    var isBrowser = new Function("try {return this===window;}catch(e){ return false;}")();
+    if (!isBrowser && this.parameters.saveFrames.length > 0) {
+        var shell = require('shelljs');
+        shell.mkdir('-p', this.parameters.saveFrames + "id/");
+        var saveFramesFS = require("fs");
+        if (!saveFramesFS.existsSync(this.parameters.saveFrames + "id/" + id + ".txt")) {
+            saveFramesFS.writeFileSync(this.parameters.saveFrames + "id/" + id + ".txt", "Bullet Sequence - Action");
+        }
+        var currenAction = lastNode.action;
+        var currentNode = lastNode.parent;
+        while (currentNode.parent != null) {
+            var bullets = lastNode.world.bullets;
+            var line_1 = "";
+            for (var _i = 0, bullets_2 = bullets; _i < bullets_2.length; _i++) {
+                var b = bullets_2[_i];
+                line_1 += Math.floor(b.x) + " " + Math.floor(b.y) + " " + Math.floor(b.radius) + ",";
+            }
+            if (line_1.length > 0) {
+                line_1 = line_1.substring(0, line_1.length - 1);
+            }
+            var action = ActionNumber.getAction(currenAction).x + "," + ActionNumber.getAction(currenAction).y;
+            saveFramesFS.appendFileSync(this.parameters.saveFrames + "id/" + id + ".txt", line_1 + " - " + action);
+            currenAction = currentNode.action;
+            currentNode = currentNode.parent;
+        }
+    }
+}
 function evaluate(id, parameters, input) {
-    var results = { id: [], fitness: [], constraints: [], behavior: [] };
+    var results = { id: [], fitness: [], constraints: [], behavior: [], errorType: [], bossHealth: [] };
     for (var i = 0; i < id.length; i++) {
         var temp = evaluateOne(id[i], parameters, input[i]);
         results.id.push(temp.id);
         results.fitness.push(temp.fitness);
         results.constraints.push(temp.constraints);
         results.behavior.push(temp.behavior);
+        results.bossHealth.push(temp.bossHealth);
+        results.errorType.push(temp.errorType);
     }
     this.postMessage(results);
 }
@@ -438,41 +470,55 @@ function evaluateOne(id, parameters, input) {
         }
         numSpawners += 1;
     }
-    var startWorld = new Talakat.World(parameters.width, parameters.height);
+    var startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
     var ai = new self[parameters.agent](parameters);
     ai.initialize();
     var bestNode = ai.plan(startWorld.clone(), parameters.maxAgentTime);
+    saveGameFrames(id, bestNode);
     var risk = 0;
     var distribution = 0;
     var density = 0;
     var frames = 0;
+    var calculationFrames = parameters.calculationFrames;
+    var bucketWidth = parameters.width / parameters.bucketsX;
+    var bucketHeight = parameters.height / parameters.bucketsY;
+    var buckets = initializeBuckets(bucketWidth, bucketHeight);
     var actionSequence = bestNode.getSequence(parameters.repeatingAction);
     var currentNode = bestNode;
     while (currentNode.parent != null) {
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets);
-        risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
-        distribution += calculateDistribution(buckets);
-        density += calculateDensity(buckets);
-        frames += 1.0;
+        if (calculationFrames > 0) {
+            calculationFrames -= 1;
+            calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets, buckets);
+        }
+        else {
+            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            distribution += calculateDistribution(buckets);
+            density += calculateDensity(buckets);
+            calculationFrames = parameters.calculationFrames;
+            frames += 1.0;
+            buckets = initializeBuckets(bucketWidth, bucketHeight);
+        }
         currentNode = currentNode.parent;
     }
-    if (numLoops > 0 || numBullets / numSpawners < 1 ||
-        (ai.status == GameStatus.ALOTSPAWNERS ||
-            ai.status == GameStatus.SPAWNERSTOBULLETS ||
-            ai.status == GameStatus.TOOSLOW)) {
+    if ((ai.status == GameStatus.ALOTSPAWNERS ||
+        ai.status == GameStatus.SPAWNERSTOBULLETS ||
+        ai.status == GameStatus.TOOSLOW)) {
         return {
             id: id,
             fitness: 0,
-            constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
+            bossHealth: bestNode.world.boss.getHealth(),
+            errorType: ai.status,
+            // constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
+            constraints: getFitness(bestNode.world.boss.getHealth()),
             behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
         };
     }
     return {
         id: id,
         fitness: getFitness(bestNode.world.boss.getHealth()),
+        bossHealth: bestNode.world.boss.getHealth(),
+        errorType: ai.status,
         constraints: 1,
         behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
     };

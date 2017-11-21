@@ -20,6 +20,14 @@
             ]
         },
         {
+            "label": "Build Generate Data Environment",
+            "type": "typescript",
+            "tsconfig": "generateData/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ]
+        },
+        {
             "label": "Build Worker",
             "type": "typescript",
             "tsconfig": "evaluator/tsconfig.json",

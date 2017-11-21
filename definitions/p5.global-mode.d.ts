@@ -930,7 +930,7 @@ declare function createImage(width: number, height: number): p5.Image;
 /**
  * Capture a sequence of frames that can be used to create a movie.
  */
-declare function saveFrames(filename: string, extension: string, duration: number, framerate: number, callback?: () => any): void;
+declare function saveGameFrames(filename: string, extension: string, duration: number, framerate: number, callback?: () => any): void;
 
 // src/image/loading_displaying.js
 
