@@ -5,6 +5,7 @@ let spawnerGrammar: any;
 let scriptGrammar: any;
 let parameters: any;
 let img: any;
+let spawnerNumbers:number = 0;
 
 function preload(): void {
     spawnerGrammar = loadJSON("assets/spawnerGrammar.json");
@@ -17,8 +18,10 @@ function setup(): void {
     let canvas = createCanvas(400, 640);
     canvas.parent("game");
     background(0, 0, 0);
+    spawnerNumbers = 0;
     for (let n of scriptGrammar.name) {
         spawnerGrammar.name.push(n);
+        spawnerNumbers += 1;
     }
 }
 
@@ -137,7 +140,7 @@ class MapElite{
         let chromosomes:Chromosome[] = [];
         for (let i: number = 0; i < parameters.initializationSize; i++) {
             let c: Chromosome = new Chromosome();
-            c.randomInitialize(parameters.sequenceSize, parameters.maxValue);
+            c.randomInitialize(spawnerNumbers, parameters.sequenceSize, parameters.maxValue);
             chromosomes.push(c);
         }
         this.evaluator.startEvaluation(chromosomes, parameters);
