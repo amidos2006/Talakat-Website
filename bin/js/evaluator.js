@@ -414,34 +414,6 @@ function getConstraints(loops, bullets, bossHealth) {
 function getFitness(bossHealth) {
     return (1 - bossHealth);
 }
-function saveGameFrames(id, lastNode) {
-    var isBrowser = new Function("try {return this===window;}catch(e){ return false;}")();
-    if (!isBrowser && this.parameters.saveFrames.length > 0) {
-        var shell = require('shelljs');
-        shell.mkdir('-p', this.parameters.saveFrames + "id/");
-        var saveFramesFS = require("fs");
-        if (!saveFramesFS.existsSync(this.parameters.saveFrames + "id/" + id + ".txt")) {
-            saveFramesFS.writeFileSync(this.parameters.saveFrames + "id/" + id + ".txt", "Bullet Sequence - Action");
-        }
-        var currenAction = lastNode.action;
-        var currentNode = lastNode.parent;
-        while (currentNode.parent != null) {
-            var bullets = lastNode.world.bullets;
-            var line_1 = "";
-            for (var _i = 0, bullets_2 = bullets; _i < bullets_2.length; _i++) {
-                var b = bullets_2[_i];
-                line_1 += Math.floor(b.x) + " " + Math.floor(b.y) + " " + Math.floor(b.radius) + ",";
-            }
-            if (line_1.length > 0) {
-                line_1 = line_1.substring(0, line_1.length - 1);
-            }
-            var action = ActionNumber.getAction(currenAction).x + "," + ActionNumber.getAction(currenAction).y;
-            saveFramesFS.appendFileSync(this.parameters.saveFrames + "id/" + id + ".txt", line_1 + " - " + action);
-            currenAction = currentNode.action;
-            currentNode = currentNode.parent;
-        }
-    }
-}
 function evaluate(id, parameters, input) {
     var results = { id: [], fitness: [], constraints: [], behavior: [], errorType: [], bossHealth: [] };
     for (var i = 0; i < id.length; i++) {
@@ -475,7 +447,6 @@ function evaluateOne(id, parameters, input) {
     var ai = new self[parameters.agent](parameters);
     ai.initialize();
     var bestNode = ai.plan(startWorld.clone(), parameters.maxAgentTime);
-    saveGameFrames(id, bestNode);
     var risk = 0;
     var distribution = 0;
     var density = 0;
