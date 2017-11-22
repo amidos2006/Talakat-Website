@@ -2,6 +2,7 @@
 
 let tracery = require("./tracery.js");
 let Talakat = require("./talakat.js");
+let shell = require('shelljs');
 
 enum GameStatus {
     WIN,
@@ -171,36 +172,14 @@ class AStarPlanner {
 
 global["AStarPlanner"] = AStarPlanner;
 
-function generateTalakatScript(spawnerSequence: number[], scriptSequence: number[], spawnerGrammar:any, scriptGrammar:any) {
-    let tempSequence: number[] = spawnerSequence.concat([]);
-    let input: string = "{\"spawners\":{";
-    for (let name of scriptGrammar.name) {
-        spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name), 1);
-        let spawnerTracery = tracery.createGrammar(spawnerGrammar);
-        input += "\"" + name + "\":" + spawnerTracery.flattenSequence("#origin#", tempSequence) + ",";
-        spawnerGrammar.name.push(name);
-    }
-    tempSequence = scriptSequence.concat([]);
-    let scriptTracery = tracery.createGrammar(scriptGrammar);
-    input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
-    for (let p of scriptGrammar.percent) {
-        input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flattenSequence("#events#", tempSequence) + "]},";
-    }
-    input = input.substring(0, input.length - 1) + "]}}";
-    return JSON.parse(input);
-}
-
-function saveGameFrames(id: number, lastNode: TreeNode, parameters:any): void {
+function saveGameFrames(fs:any, id: number, lastNode: TreeNode, parameters:any): void {
     if (parameters.saveFrames.length > 0) {
-        let shell = require('shelljs');
-        let saveFramesFS = require("fs");
-        
-        if (!saveFramesFS.existsSync(parameters.saveFrames)){
+        if (!fs.existsSync(parameters.saveFrames)){
             shell.mkdir('-p', parameters.saveFrames);
         }
         
-        if (!saveFramesFS.existsSync(parameters.saveFrames + id + ".txt")) {
-            saveFramesFS.writeFileSync(parameters.saveFrames + id + ".txt", "Bullets - Player - Action\n");
+        if (!fs.existsSync(parameters.saveFrames + id + ".txt")) {
+            fs.writeFileSync(parameters.saveFrames + id + ".txt", "Bullets - Player - Action\n");
         }
         let currenAction = lastNode.action;
         let currentNode = lastNode.parent;
@@ -215,7 +194,7 @@ function saveGameFrames(id: number, lastNode: TreeNode, parameters:any): void {
             }
             let player:string = currentNode.world.player.x + " " + currentNode.world.player.y + " " + currentNode.world.player.radius;
             let action: string = ActionNumber.getAction(currenAction).x + " " + ActionNumber.getAction(currenAction).y;
-            saveFramesFS.appendFileSync(parameters.saveFrames + id + ".txt", line + " - " + action + "\n");
+            fs.appendFileSync(parameters.saveFrames + id + ".txt", line + " - " + action + "\n");
             currenAction = currentNode.action;
             currentNode = currentNode.parent;
         }
@@ -223,10 +202,12 @@ function saveGameFrames(id: number, lastNode: TreeNode, parameters:any): void {
 }
 
 class Evaluator {
+    fs:any;
     spawnerGrammar:any;
     scriptGrammar:any;
 
-    constructor(scriptGrammar:any, spawnerGrammar:any) {
+    constructor(fs:any, scriptGrammar:any, spawnerGrammar:any) {
+        this.fs = fs;
         this.scriptGrammar = scriptGrammar;
         this.spawnerGrammar = spawnerGrammar;
     }
@@ -234,12 +215,15 @@ class Evaluator {
     evaluate(chromosomes: Chromosome[], parameters: any):void {
         for(let c of chromosomes){
             let startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
-            startWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence, this.spawnerGrammar, this.scriptGrammar));
+            startWorld.initialize(c.generateTalakatScript(tracery, this.spawnerGrammar, this.scriptGrammar));
             let ai = new global[parameters.agent](parameters);
             ai.initialize();
             let bestNode: TreeNode = ai.plan(startWorld.clone(), parameters.maxAgentTime);
+            ai = null;
+            startWorld = null;
             c.fitness = 1 - bestNode.world.boss.getHealth()
-            saveGameFrames(c.id, bestNode, parameters);
+            saveGameFrames(fs, c.id, bestNode, parameters);
+            bestNode = null;
         }
     }
 }

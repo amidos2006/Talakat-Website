@@ -1,7 +1,7 @@
 var Chromosome = (function () {
     function Chromosome() {
         this.id = ++Chromosome.totalID;
-        this.spawnerSequence = [];
+        this.spawnersSequence = [];
         this.scriptSequence = [];
         this.fitness = null;
         this.bossHealth = null;
@@ -11,19 +11,49 @@ var Chromosome = (function () {
     Chromosome.prototype.random = function (min, max) {
         return Math.random() * (max - min) + min;
     };
-    Chromosome.prototype.randomInitialize = function (sequenceLength, maxValue) {
-        this.spawnerSequence = [];
+    Chromosome.prototype.randomInitialize = function (spawnerNum, sequenceLength, maxValue) {
+        this.spawnersSequence = [];
+        for (var i = 0; i < spawnerNum; i++) {
+            this.spawnersSequence.push([]);
+            for (var j = 0; j < sequenceLength; j++) {
+                this.spawnersSequence[i].push(Math.floor(this.random(0, maxValue)));
+            }
+        }
         this.scriptSequence = [];
         for (var i = 0; i < sequenceLength; i++) {
-            this.spawnerSequence.push(Math.floor(this.random(0, maxValue)));
             this.scriptSequence.push(Math.floor(this.random(1, maxValue)));
         }
     };
+    Chromosome.prototype.generateTalakatScript = function (tracery, spawnerGrammar, scriptGrammar) {
+        var input = "{\"spawners\":{";
+        var index = 0;
+        for (var _i = 0, _a = scriptGrammar.name; _i < _a.length; _i++) {
+            var name_1 = _a[_i];
+            var tempSequence_1 = this.spawnersSequence[index].concat([]);
+            spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name_1), 1);
+            var spawnerTracery = tracery.createGrammar(spawnerGrammar);
+            input += "\"" + name_1 + "\":" + spawnerTracery.flattenSequence("#origin#", tempSequence_1) + ",";
+            spawnerGrammar.name.push(name_1);
+            index++;
+        }
+        var tempSequence = this.scriptSequence.concat([]);
+        var scriptTracery = tracery.createGrammar(scriptGrammar);
+        input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
+        for (var _b = 0, _c = scriptGrammar.percent; _b < _c.length; _b++) {
+            var p = _c[_b];
+            input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flattenSequence("#events#", tempSequence) + "]},";
+        }
+        input = input.substring(0, input.length - 1) + "]}}";
+        return JSON.parse(input);
+    };
     Chromosome.prototype.clone = function () {
         var clone = new Chromosome();
-        for (var _i = 0, _a = this.spawnerSequence; _i < _a.length; _i++) {
-            var v = _a[_i];
-            clone.spawnerSequence.push(v);
+        for (var i = 0; i < this.spawnersSequence.length; i++) {
+            clone.spawnersSequence.push([]);
+            for (var _i = 0, _a = this.spawnersSequence[i]; _i < _a.length; _i++) {
+                var g = _a[_i];
+                clone.spawnersSequence[i].push(g);
+            }
         }
         for (var _b = 0, _c = this.scriptSequence; _b < _c.length; _b++) {
             var v = _c[_b];
@@ -42,13 +72,15 @@ var Chromosome = (function () {
         children[1].fitness = null;
         children[1].constraints = null;
         children[1].behavior = null;
-        if (this.random(0, 1.0) < 0.5) {
-            var swapPoint = Math.floor(this.random(0, children[0].spawnerSequence.length));
-            for (var i = 0; i < children[0].spawnerSequence.length; i++) {
-                if (i > swapPoint) {
-                    var temp = children[0].spawnerSequence[i];
-                    children[0].spawnerSequence[i] = children[1].spawnerSequence[i];
-                    children[1].spawnerSequence[i] = temp;
+        for (var i = 0; i < children[0].spawnersSequence.length; i++) {
+            if (this.random(0, 1.0) < 0.5) {
+                var swapPoint = Math.floor(this.random(0, children[0].spawnersSequence[i].length));
+                for (var j = 0; j < children[0].spawnersSequence[i].length; j++) {
+                    if (i > swapPoint) {
+                        var temp = children[0].spawnersSequence[i][j];
+                        children[0].spawnersSequence[i][j] = children[1].spawnersSequence[i][j];
+                        children[1].spawnersSequence[i][j] = temp;
+                    }
                 }
             }
         }
@@ -69,14 +101,16 @@ var Chromosome = (function () {
         mutated.fitness = null;
         mutated.constraints = null;
         mutated.behavior = null;
-        if (this.random(0, 1.0) < 0.5) {
-            for (var i = 0; i < mutated.spawnerSequence.length; i++) {
-                mutated.spawnerSequence[i] += Math.round(this.random(-mutationSize, mutationSize));
-                if (mutated.spawnerSequence[i] < 0) {
-                    mutated.spawnerSequence[i] += maxValue;
-                }
-                if (mutated.spawnerSequence[i] >= maxValue) {
-                    mutated.spawnerSequence[i] -= maxValue;
+        for (var i = 0; i < mutated.spawnersSequence.length; i++) {
+            if (this.random(0, 1.0) < 0.5) {
+                for (var j = 0; j < mutated.spawnersSequence.length; j++) {
+                    mutated.spawnersSequence[i][j] += Math.round(this.random(-mutationSize, mutationSize));
+                    if (mutated.spawnersSequence[i][j] < 0) {
+                        mutated.spawnersSequence[i][j] += maxValue;
+                    }
+                    if (mutated.spawnersSequence[i][j] >= maxValue) {
+                        mutated.spawnersSequence[i][j] -= maxValue;
+                    }
                 }
             }
         }
@@ -99,6 +133,7 @@ Chromosome.totalID = 0;
 /// <reference path="Chromosome.ts"/>
 var tracery = require("./tracery.js");
 var Talakat = require("./talakat.js");
+var shell = require('shelljs');
 var GameStatus;
 (function (GameStatus) {
     GameStatus[GameStatus["WIN"] = 0] = "WIN";
@@ -254,35 +289,13 @@ var AStarPlanner = (function () {
     return AStarPlanner;
 }());
 global["AStarPlanner"] = AStarPlanner;
-function generateTalakatScript(spawnerSequence, scriptSequence, spawnerGrammar, scriptGrammar) {
-    var tempSequence = spawnerSequence.concat([]);
-    var input = "{\"spawners\":{";
-    for (var _i = 0, _a = scriptGrammar.name; _i < _a.length; _i++) {
-        var name_1 = _a[_i];
-        spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name_1), 1);
-        var spawnerTracery = tracery.createGrammar(spawnerGrammar);
-        input += "\"" + name_1 + "\":" + spawnerTracery.flattenSequence("#origin#", tempSequence) + ",";
-        spawnerGrammar.name.push(name_1);
-    }
-    tempSequence = scriptSequence.concat([]);
-    var scriptTracery = tracery.createGrammar(scriptGrammar);
-    input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
-    for (var _b = 0, _c = scriptGrammar.percent; _b < _c.length; _b++) {
-        var p = _c[_b];
-        input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flattenSequence("#events#", tempSequence) + "]},";
-    }
-    input = input.substring(0, input.length - 1) + "]}}";
-    return JSON.parse(input);
-}
-function saveGameFrames(id, lastNode, parameters) {
+function saveGameFrames(fs, id, lastNode, parameters) {
     if (parameters.saveFrames.length > 0) {
-        var shell = require('shelljs');
-        var saveFramesFS = require("fs");
-        if (!saveFramesFS.existsSync(parameters.saveFrames)) {
+        if (!fs.existsSync(parameters.saveFrames)) {
             shell.mkdir('-p', parameters.saveFrames);
         }
-        if (!saveFramesFS.existsSync(parameters.saveFrames + id + ".txt")) {
-            saveFramesFS.writeFileSync(parameters.saveFrames + id + ".txt", "Bullets - Player - Action\n");
+        if (!fs.existsSync(parameters.saveFrames + id + ".txt")) {
+            fs.writeFileSync(parameters.saveFrames + id + ".txt", "Bullets - Player - Action\n");
         }
         var currenAction = lastNode.action;
         var currentNode = lastNode.parent;
@@ -298,14 +311,15 @@ function saveGameFrames(id, lastNode, parameters) {
             }
             var player = currentNode.world.player.x + " " + currentNode.world.player.y + " " + currentNode.world.player.radius;
             var action = ActionNumber.getAction(currenAction).x + " " + ActionNumber.getAction(currenAction).y;
-            saveFramesFS.appendFileSync(parameters.saveFrames + id + ".txt", line + " - " + action + "\n");
+            fs.appendFileSync(parameters.saveFrames + id + ".txt", line + " - " + action + "\n");
             currenAction = currentNode.action;
             currentNode = currentNode.parent;
         }
     }
 }
 var Evaluator = (function () {
-    function Evaluator(scriptGrammar, spawnerGrammar) {
+    function Evaluator(fs, scriptGrammar, spawnerGrammar) {
+        this.fs = fs;
         this.scriptGrammar = scriptGrammar;
         this.spawnerGrammar = spawnerGrammar;
     }
@@ -313,12 +327,15 @@ var Evaluator = (function () {
         for (var _i = 0, chromosomes_1 = chromosomes; _i < chromosomes_1.length; _i++) {
             var c = chromosomes_1[_i];
             var startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
-            startWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence, this.spawnerGrammar, this.scriptGrammar));
+            startWorld.initialize(c.generateTalakatScript(tracery, this.spawnerGrammar, this.scriptGrammar));
             var ai = new global[parameters.agent](parameters);
             ai.initialize();
             var bestNode = ai.plan(startWorld.clone(), parameters.maxAgentTime);
+            ai = null;
+            startWorld = null;
             c.fitness = 1 - bestNode.world.boss.getHealth();
-            saveGameFrames(c.id, bestNode, parameters);
+            saveGameFrames(fs, c.id, bestNode, parameters);
+            bestNode = null;
         }
     };
     return Evaluator;
@@ -328,33 +345,44 @@ var Evaluator = (function () {
 var fs = require('fs');
 var spawnerGrammar = JSON.parse(fs.readFileSync("assets/spawnerGrammar.json"));
 var scriptGrammar = JSON.parse(fs.readFileSync("assets/scriptGrammar.json"));
+var spawnerNumber = 0;
 for (var _i = 0, _a = scriptGrammar.name; _i < _a.length; _i++) {
     var n = _a[_i];
     spawnerGrammar.name.push(n);
+    spawnerNumber += 1;
 }
 var parameters = JSON.parse(fs.readFileSync("assets/parameters.json"));
 parameters.saveFrames += process.argv[2] + "/";
 function writeEvaluator(c, fileName) {
     if (!fs.existsSync(fileName)) {
-        fs.writeFileSync(fileName, "Spawner Sequence - Script Sequence - Win Percentage\n");
+        var spawnerNames = "Spawner 1";
+        for (var i = 2; i <= spawnerNumber; i++) {
+            spawnerNames += " - Spawner " + i;
+        }
+        fs.writeFileSync(fileName, spawnerNames + " - Script Sequence - Win Percentage\n");
     }
-    fs.appendFileSync(fileName, c.spawnerSequence.toString() + " - " + c.scriptSequence.toString() + " - " + c.fitness);
+    var spawnerValues = c.spawnersSequence[0].toString();
+    for (var i = 1; i < spawnerNumber; i++) {
+        spawnerValues += " - " + c.spawnersSequence[i].toString();
+    }
+    fs.appendFileSync(fileName, spawnerValues + " - " + c.scriptSequence.toString() + " - " + c.fitness + "\n");
 }
 function getRandomChromosomes(size) {
     var chromosomes = [];
     for (var i = 0; i < size; i++) {
         var c = new Chromosome();
-        c.randomInitialize(parameters.sequenceSize, parameters.maxValue);
+        c.randomInitialize(spawnerNumber, parameters.sequenceSize, parameters.maxValue);
         chromosomes.push(c);
     }
     return chromosomes;
 }
-var evaluator = new Evaluator(scriptGrammar, spawnerGrammar);
-for (var i = 0; i < parameters.totalLevelsToTest; i++) {
+var evaluator = new Evaluator(fs, scriptGrammar, spawnerGrammar);
+for (var i = 0; i < parameters.totalLevelsToTest; i += 30) {
     var chromosomes = getRandomChromosomes(30);
     evaluator.evaluate(chromosomes, parameters);
     for (var _b = 0, chromosomes_2 = chromosomes; _b < chromosomes_2.length; _b++) {
         var c = chromosomes_2[_b];
         writeEvaluator(c, parameters.saveFrames + "sequenceFitness.txt");
     }
+    chromosomes = null;
 }

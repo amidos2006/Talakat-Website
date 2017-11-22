@@ -7,7 +7,7 @@
     "agentType": "time",
     "agentValue": 30,
     "maxStepTime": 100,
-    "maxAgentTime": 30000,
+    "maxAgentTime": 100000,
     "maxSpawnerFrames": 10,
     "maxNumSpawners": 100,
     "maxNumBullets": 500,
@@ -21,8 +21,8 @@
     "bucketsX": 8,
     "bucketsY": 10,
 
-    "sequenceSize": 37,
-    "maxValue": 50,
+    "sequenceSize": 23,
+    "maxValue": 100,
 
     "populationSize": 30,
     "initializationSize": 100,

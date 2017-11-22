@@ -28,6 +28,25 @@ class Chromosome {
         }
     }
 
+    generateTalakatScript(spawnerGrammar: any, scriptGrammar: any) {
+        let tempSequence: number[] = this.spawnerSequence.concat([]);
+        let input: string = "{\"spawners\":{";
+        for (let name of scriptGrammar.name) {
+            spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name), 1);
+            let spawnerTracery: tracery.Grammar = tracery.createGrammar(spawnerGrammar);
+            input += "\"" + name + "\":" + spawnerTracery.flattenSequence("#origin#", tempSequence) + ",";
+            spawnerGrammar.name.push(name);
+        }
+        tempSequence = this.scriptSequence.concat([]);
+        let scriptTracery: tracery.Grammar = tracery.createGrammar(scriptGrammar);
+        input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
+        for (let p of scriptGrammar.percent) {
+            input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flattenSequence("#events#", tempSequence) + "]},";
+        }
+        input = input.substring(0, input.length - 1) + "]}}";
+        return JSON.parse(input);
+    }
+
     clone():Chromosome {
         let clone:Chromosome = new Chromosome();
         for (let v of this.spawnerSequence){

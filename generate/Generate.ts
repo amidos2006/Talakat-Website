@@ -65,7 +65,7 @@ class Evaluator{
             let data: any = { id: [], parameters: param, input: [] };
             for (let j: number = i * chromoPerThread; j < end; j++) {
                 data.id.push(this.population[j].id);
-                data.input.push(generateTalakatScript(this.population[j].spawnerSequence, this.population[j].scriptSequence));
+                data.input.push(this.population[j].generateTalakatScript(spawnerGrammar, scriptGrammar));
             }
             let w: Worker = new Worker("js/evaluator.js");
             w.postMessage(data);
@@ -156,7 +156,7 @@ class MapElite{
         debugLog("Map Size: " + this.mapSize + "\n");
         debugLog("########################################\n");
         let tempBest: Chromosome = getBestChromosome();
-        debugLog("Best Chromosome: " + JSON.stringify(generateTalakatScript(tempBest.spawnerSequence, tempBest.scriptSequence)) + "\n");
+        debugLog("Best Chromosome: " + JSON.stringify(tempBest.generateTalakatScript(spawnerGrammar, scriptGrammar)) + "\n");
         debugLog("Fitness: " + tempBest.fitness + "\n");
         debugLog("Constraints: " + tempBest.constraints + "\n");
         debugLog("Behaviors: " + tempBest.behavior + "\n");
@@ -317,25 +317,6 @@ function rankSelection(arary: any[]): any{
     return arary[arary.length - 1];
 }
 
-function generateTalakatScript(spawnerSequence:number[], scriptSequence:number[]){
-    let tempSequence: number[] = spawnerSequence.concat([]);
-    let input: string = "{\"spawners\":{";
-    for (let name of scriptGrammar.name) {
-        spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name), 1);
-        let spawnerTracery: tracery.Grammar = tracery.createGrammar(spawnerGrammar);
-        input += "\"" + name + "\":" + spawnerTracery.flattenSequence("#origin#", tempSequence) + ",";
-        spawnerGrammar.name.push(name);
-    }
-    tempSequence = scriptSequence.concat([]);
-    let scriptTracery: tracery.Grammar = tracery.createGrammar(scriptGrammar);
-    input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
-    for (let p of scriptGrammar.percent) {
-        input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flattenSequence("#events#", tempSequence) + "]},";
-    }
-    input = input.substring(0, input.length - 1) + "]}}";
-    return JSON.parse(input);
-}
-
 function getBestChromosome(){
     let elite:Elite =  mapElite.getCloset([
         parseInt((<HTMLInputElement>document.getElementById("entropy")).value),
@@ -353,7 +334,7 @@ function playBest(){
     if (mapElite != null && mapElite.mapSize > 0) {
         newWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
         let c:Chromosome = getBestChromosome();
-        newWorld.initialize(generateTalakatScript(c.spawnerSequence, c.scriptSequence));
+        newWorld.initialize(c.generateTalakatScript(spawnerGrammar, scriptGrammar));
     }
 }
 
