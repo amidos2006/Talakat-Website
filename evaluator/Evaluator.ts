@@ -114,13 +114,8 @@ function getMaxBulletsBucket(buckets:number[]){
     return max;
 }
 
-function calculateDensity(buckets:number[]):number{
-    let result:number = 0;
-    let maxBullets: number = getMaxBulletsBucket(buckets);
-    for(let b of buckets){
-        result += b / Math.max(maxBullets, 1);
-    }
-    return result / buckets.length;
+function calculateDensity(buckets:number[], bulletNumber:number):number{
+    return getMaxBulletsBucket(buckets) / bulletNumber;
 }
 
 function calculateRisk(player:Talakat.Player, width:number, height:number, buckets:number[]):number{
@@ -152,32 +147,32 @@ function initializeBuckets(width:number, height:number):number[]{
     return buckets;
 }
 
-function calculateBuckets(width:number, height:number, bullets:Talakat.Bullet[], buckets:number[]):void{
+function calculateBuckets(width:number, height:number, bucketX:number, bullets:Talakat.Bullet[], buckets:number[]):void{
     let p: Talakat.Point = new Talakat.Point();
     for(let b of bullets){
         let indeces: number[] = [];
 
         p.x = b.x - b.radius;
         p.y = b.y - b.radius;
-        let index: number = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        let index: number = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if(indeces.indexOf(index) == -1){
             indeces.push(index);
         }
         p.x = b.x + b.radius;
         p.y = b.y - b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
         p.x = b.x - b.radius;
         p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
         p.x = b.x + b.radius;
         p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
@@ -203,17 +198,10 @@ function getFitness(bossHealth:number):number{
 }
 
 function evaluate(id:number[], parameters:any, input:any[]){
-    let results:any = {id:[], fitness:[], constraints:[], behavior:[], errorType:[], bossHealth:[]};
     for(let i:number=0; i<id.length; i++){
         let temp:any = evaluateOne(id[i], parameters, input[i]);
-        results.id.push(temp.id);
-        results.fitness.push(temp.fitness);
-        results.constraints.push(temp.constraints);
-        results.behavior.push(temp.behavior);
-        results.bossHealth.push(temp.bossHealth);
-        results.errorType.push(temp.errorType);
+        this.postMessage(temp);
     }
-    this.postMessage(results);
 }
 
 function evaluateOne(id:number, parameters:any, input:any){
@@ -243,26 +231,23 @@ function evaluateOne(id:number, parameters:any, input:any){
     let distribution: number = 0;
     let density: number = 0;
     let frames: number = 0;
+    let bulletFrames:number = 0;
     let calculationFrames: number = parameters.calculationFrames;
     let bucketWidth: number = parameters.width / parameters.bucketsX;
     let bucketHeight: number = parameters.height / parameters.bucketsY;
-    let buckets: number[] = initializeBuckets(bucketWidth, bucketHeight);
+    let buckets: number[] = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
     let actionSequence: number[] = bestNode.getSequence(parameters.repeatingAction);
     let currentNode:TreeNode = bestNode;
     while (currentNode.parent != null){
-        if(calculationFrames > 0){
-            calculationFrames -= 1;
-            calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets, buckets);
-        }
-        else{
+        if(currentNode.world.bullets.length > 0){
+            buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
+            bulletFrames += 1;
             risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
             distribution += calculateDistribution(buckets);
-            density += calculateDensity(buckets);
-
-            calculationFrames = parameters.calculationFrames;
-            frames += 1.0;
-            buckets = initializeBuckets(bucketWidth, bucketHeight);
+            density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
+        frames += 1.0;
         currentNode = currentNode.parent;
     }
 
@@ -277,7 +262,13 @@ function evaluateOne(id:number, parameters:any, input:any){
             errorType: ai.status,
             // constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
             constraints: getFitness(bestNode.world.boss.getHealth()),
-            behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
+            behavior: [
+                calculateBiEntropy(actionSequence), 
+                // bulletFrames / Math.max(1, bulletFrames), 
+                risk / Math.max(1, bulletFrames), 
+                distribution / Math.max(1, bulletFrames), 
+                density / Math.max(1, bulletFrames)
+            ]
         };
     }
 
@@ -287,6 +278,12 @@ function evaluateOne(id:number, parameters:any, input:any){
         bossHealth: bestNode.world.boss.getHealth(),
         errorType: ai.status,
         constraints: 1,
-        behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
+        behavior: [
+            calculateBiEntropy(actionSequence),
+            // bulletFrames / Math.max(1, frames),
+            risk / Math.max(1, bulletFrames),
+            distribution / Math.max(1, bulletFrames),
+            density / Math.max(1, bulletFrames)
+        ]
     };
 }

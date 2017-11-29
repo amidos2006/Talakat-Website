@@ -60,15 +60,7 @@ var Evaluator = (function () {
             var w = new Worker("js/evaluator.js");
             w.postMessage(data);
             w.onmessage = function (event) {
-                for (var i_1 = 0; i_1 < event.data.id.length; i_1++) {
-                    recordedMessages.push({
-                        id: event.data.id[i_1],
-                        fitness: event.data.fitness[i_1],
-                        constraints: event.data.constraints[i_1],
-                        errorType: event.data.errorType[i_1],
-                        behavior: event.data.behavior[i_1]
-                    });
-                }
+                recordedMessages.push(event.data);
             };
             this.workers.push(w);
         }
@@ -117,16 +109,17 @@ var MapElite = (function () {
         this.evaluator = new Evaluator();
     }
     MapElite.prototype.randomInitailzie = function () {
-        debugLog("Initializing The Map.\n");
         var chromosomes = [];
-        for (var i = 0; i < parameters.initializationSize; i++) {
+        var patchSize = Math.min(parameters.initializationSize, parameters.patchSize);
+        for (var i = 0; i < patchSize; i++) {
             var c = new Chromosome();
             c.randomInitialize(spawnerNumbers, parameters.sequenceSize, parameters.maxValue);
             chromosomes.push(c);
         }
+        parameters.initializationSize -= patchSize;
         this.evaluator.startEvaluation(chromosomes, parameters);
     };
-    MapElite.prototype.updateMap = function () {
+    MapElite.prototype.updateInitialize = function () {
         if (this.evaluator.running && !this.evaluator.checkDone()) {
             return;
         }
@@ -134,6 +127,21 @@ var MapElite = (function () {
             var pop_1 = this.evaluator.finishEvaluation();
             for (var _i = 0, pop_2 = pop_1; _i < pop_2.length; _i++) {
                 var c = pop_2[_i];
+                this.assignMap(c);
+            }
+        }
+        if (parameters.initializationSize > 0) {
+            this.randomInitailzie();
+        }
+    };
+    MapElite.prototype.updateMap = function () {
+        if (this.evaluator.running && !this.evaluator.checkDone()) {
+            return;
+        }
+        if (this.evaluator.running) {
+            var pop_3 = this.evaluator.finishEvaluation();
+            for (var _i = 0, pop_4 = pop_3; _i < pop_4.length; _i++) {
+                var c = pop_4[_i];
                 this.assignMap(c);
             }
         }
@@ -146,7 +154,7 @@ var MapElite = (function () {
         debugLog("Behaviors: " + tempBest.behavior + "\n");
         debugLog("########################################\n");
         var pop = [];
-        while (pop.length < parameters.populationSize) {
+        while (pop.length < parameters.patchSize) {
             var newChromosomes = [];
             var elites = this.randomSelect();
             if (random(0.0, 1.0) < elites.length / this.mapSize) {
@@ -175,11 +183,10 @@ var MapElite = (function () {
         this.evaluator.startEvaluation(pop, parameters);
     };
     MapElite.prototype.assignMap = function (c) {
-        var index = "";
-        index += Math.floor(c.behavior[0] * parameters.dimensionSize) + "," +
-            Math.floor(c.behavior[1] * parameters.dimensionSize) + "," +
-            Math.floor(c.behavior[2] * parameters.dimensionSize) + "," +
-            Math.floor(c.behavior[3] * parameters.dimensionSize);
+        var index = "" + Math.floor(c.behavior[0] * parameters.dimensionSize);
+        for (var i = 1; i < c.behavior.length; i++) {
+            index += "," + Math.floor(c.behavior[i] * parameters.dimensionSize);
+        }
         if (this.map[index] != undefined) {
             if (c.constraints == 1 && (this.map[index].best == null ||
                 this.map[index].best.fitness < c.fitness)) {
@@ -321,8 +328,7 @@ function stopEvolution() {
         debugLog("Evolution Stopped\n");
     }
 }
-function startEvolution(populationSize, threads, initializationSize) {
-    if (initializationSize === void 0) { initializationSize = 100; }
+function startEvolution(populationSize, threads, initializationSize, patchSize) {
     if (populationSize == undefined) {
         return;
     }
@@ -330,13 +336,19 @@ function startEvolution(populationSize, threads, initializationSize) {
     parameters.threadNumbers = threads;
     parameters.populationSize = populationSize;
     parameters.initializationSize = initializationSize;
+    parameters.patchSize = patchSize;
     mapElite = new MapElite();
     mapElite.randomInitailzie();
     interval = setInterval(updateEvolution, parameters.checkInterval);
     debugLog("Evolution Started\n");
 }
 function updateEvolution() {
-    mapElite.updateMap();
+    if (parameters.initializationSize > 0) {
+        mapElite.updateInitialize();
+    }
+    else {
+        mapElite.updateMap();
+    }
 }
 var keys = {
     LEFT_ARROW: 37,
@@ -492,25 +504,17 @@ var Chromosome = (function () {
         children[1].fitness = null;
         children[1].constraints = null;
         children[1].behavior = null;
-        for (var i = 0; i < children[0].spawnersSequence.length; i++) {
-            if (random(0, 1.0) < 0.5) {
-                var swapPoint = Math.floor(random(0, children[0].spawnersSequence[i].length));
-                for (var j = 0; j < children[0].spawnersSequence[i].length; j++) {
-                    if (i > swapPoint) {
-                        var temp = children[0].spawnersSequence[i][j];
-                        children[0].spawnersSequence[i][j] = children[1].spawnersSequence[i][j];
-                        children[1].spawnersSequence[i][j] = temp;
-                    }
-                }
-            }
-        }
         if (random(0, 1.0) < 0.5) {
-            var swapPoint = Math.floor(random(0, children[0].scriptSequence.length));
-            for (var i = 0; i < children[0].scriptSequence.length; i++) {
-                if (i > swapPoint) {
-                    var temp = children[0].scriptSequence[i];
-                    children[0].scriptSequence[i] = children[1].scriptSequence[i];
-                    children[1].scriptSequence[i] = temp;
+            var temp = children[0].scriptSequence;
+            children[0].scriptSequence = children[1].scriptSequence;
+            children[1].scriptSequence = temp;
+        }
+        else {
+            for (var i = 0; i < children[0].spawnersSequence.length; i++) {
+                if (random(0, 1.0) < 0.5) {
+                    var temp = children[0].spawnersSequence[i];
+                    children[0].spawnersSequence[i] = children[1].spawnersSequence[i];
+                    children[1].spawnersSequence[i] = temp;
                 }
             }
         }
@@ -521,20 +525,19 @@ var Chromosome = (function () {
         mutated.fitness = null;
         mutated.constraints = null;
         mutated.behavior = null;
-        for (var i = 0; i < mutated.spawnersSequence.length; i++) {
-            if (random(0, 1.0) < 0.5) {
-                for (var j = 0; j < mutated.spawnersSequence.length; j++) {
-                    mutated.spawnersSequence[i][j] += Math.round(random(-mutationSize, mutationSize));
-                    if (mutated.spawnersSequence[i][j] < 0) {
-                        mutated.spawnersSequence[i][j] += maxValue;
-                    }
-                    if (mutated.spawnersSequence[i][j] >= maxValue) {
-                        mutated.spawnersSequence[i][j] -= maxValue;
-                    }
+        var index = Math.floor(random(0, mutated.spawnersSequence.length + 1));
+        if (index < mutated.spawnersSequence.length) {
+            for (var i = 0; i < mutated.spawnersSequence[index].length; i++) {
+                mutated.spawnersSequence[index][i] += Math.round(random(-mutationSize, mutationSize));
+                if (mutated.spawnersSequence[index][i] < 0) {
+                    mutated.spawnersSequence[index][i] += maxValue;
+                }
+                if (mutated.spawnersSequence[index][i] >= maxValue) {
+                    mutated.spawnersSequence[index][i] -= maxValue;
                 }
             }
         }
-        if (random(0, 1.0) < 0.5) {
+        else {
             for (var i = 0; i < mutated.scriptSequence.length; i++) {
                 mutated.scriptSequence[i] += Math.round(random(-mutationSize, mutationSize));
                 if (mutated.scriptSequence[i] < 0) {
@@ -543,6 +546,10 @@ var Chromosome = (function () {
                 if (mutated.scriptSequence[i] >= maxValue) {
                     mutated.scriptSequence[i] -= maxValue;
                 }
+            }
+        }
+        for (var i = 0; i < mutated.spawnersSequence.length; i++) {
+            if (random(0, 1.0) < 0.5) {
             }
         }
         return mutated;

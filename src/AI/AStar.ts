@@ -47,7 +47,7 @@ class AStarPlanner implements Planner{
             }
             if(!currentNode.world.isWon() && !currentNode.world.isLose()){
                 if (this.parameters.agentType == "node" && numNodes > value) {
-                    this.status = GameStatus.TIMEOUT;
+                    this.status = GameStatus.NODEOUT;
                     continue;
                 }
                 for(let i:number=0; i<currentNode.children.length; i++){

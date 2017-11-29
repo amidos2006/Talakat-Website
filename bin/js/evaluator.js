@@ -1,12 +1,13 @@
 var GameStatus;
 (function (GameStatus) {
-    GameStatus[GameStatus["WIN"] = 0] = "WIN";
+    GameStatus[GameStatus["NONE"] = 0] = "NONE";
     GameStatus[GameStatus["LOSE"] = 1] = "LOSE";
-    GameStatus[GameStatus["TOOSLOW"] = 2] = "TOOSLOW";
-    GameStatus[GameStatus["TIMEOUT"] = 3] = "TIMEOUT";
-    GameStatus[GameStatus["NONE"] = 4] = "NONE";
-    GameStatus[GameStatus["SPAWNERSTOBULLETS"] = 5] = "SPAWNERSTOBULLETS";
-    GameStatus[GameStatus["ALOTSPAWNERS"] = 6] = "ALOTSPAWNERS";
+    GameStatus[GameStatus["WIN"] = 2] = "WIN";
+    GameStatus[GameStatus["NODEOUT"] = 3] = "NODEOUT";
+    GameStatus[GameStatus["TIMEOUT"] = 4] = "TIMEOUT";
+    GameStatus[GameStatus["TOOSLOW"] = 5] = "TOOSLOW";
+    GameStatus[GameStatus["SPAWNERSTOBULLETS"] = 6] = "SPAWNERSTOBULLETS";
+    GameStatus[GameStatus["ALOTSPAWNERS"] = 7] = "ALOTSPAWNERS";
 })(GameStatus || (GameStatus = {}));
 var ActionNumber = (function () {
     function ActionNumber() {
@@ -130,7 +131,7 @@ var AStarPlanner = (function () {
             }
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 if (this.parameters.agentType == "node" && numNodes > value) {
-                    this.status = GameStatus.TIMEOUT;
+                    this.status = GameStatus.NODEOUT;
                     continue;
                 }
                 for (var i = 0; i < currentNode.children.length; i++) {
@@ -331,14 +332,8 @@ function getMaxBulletsBucket(buckets) {
     }
     return max;
 }
-function calculateDensity(buckets) {
-    var result = 0;
-    var maxBullets = getMaxBulletsBucket(buckets);
-    for (var _i = 0, buckets_3 = buckets; _i < buckets_3.length; _i++) {
-        var b = buckets_3[_i];
-        result += b / Math.max(maxBullets, 1);
-    }
-    return result / buckets.length;
+function calculateDensity(buckets, bulletNumber) {
+    return getMaxBulletsBucket(buckets) / bulletNumber;
 }
 function calculateRisk(player, width, height, buckets) {
     var result = 0;
@@ -367,32 +362,32 @@ function initializeBuckets(width, height) {
     }
     return buckets;
 }
-function calculateBuckets(width, height, bullets, buckets) {
+function calculateBuckets(width, height, bucketX, bullets, buckets) {
     var p = new Talakat.Point();
     for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
         var b = bullets_1[_i];
         var indeces = [];
         p.x = b.x - b.radius;
         p.y = b.y - b.radius;
-        var index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        var index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
         p.x = b.x + b.radius;
         p.y = b.y - b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
         p.x = b.x - b.radius;
         p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
         p.x = b.x + b.radius;
         p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * width + Math.floor(p.x / width);
+        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
         if (indeces.indexOf(index) == -1) {
             indeces.push(index);
         }
@@ -415,17 +410,10 @@ function getFitness(bossHealth) {
     return (1 - bossHealth);
 }
 function evaluate(id, parameters, input) {
-    var results = { id: [], fitness: [], constraints: [], behavior: [], errorType: [], bossHealth: [] };
     for (var i = 0; i < id.length; i++) {
         var temp = evaluateOne(id[i], parameters, input[i]);
-        results.id.push(temp.id);
-        results.fitness.push(temp.fitness);
-        results.constraints.push(temp.constraints);
-        results.behavior.push(temp.behavior);
-        results.bossHealth.push(temp.bossHealth);
-        results.errorType.push(temp.errorType);
+        this.postMessage(temp);
     }
-    this.postMessage(results);
 }
 function evaluateOne(id, parameters, input) {
     var numLoops = 0;
@@ -451,25 +439,23 @@ function evaluateOne(id, parameters, input) {
     var distribution = 0;
     var density = 0;
     var frames = 0;
+    var bulletFrames = 0;
     var calculationFrames = parameters.calculationFrames;
     var bucketWidth = parameters.width / parameters.bucketsX;
     var bucketHeight = parameters.height / parameters.bucketsY;
-    var buckets = initializeBuckets(bucketWidth, bucketHeight);
+    var buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
     var actionSequence = bestNode.getSequence(parameters.repeatingAction);
     var currentNode = bestNode;
     while (currentNode.parent != null) {
-        if (calculationFrames > 0) {
-            calculationFrames -= 1;
-            calculateBuckets(bucketWidth, bucketHeight, currentNode.world.bullets, buckets);
-        }
-        else {
+        if (currentNode.world.bullets.length > 0) {
+            buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
+            bulletFrames += 1;
             risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
             distribution += calculateDistribution(buckets);
-            density += calculateDensity(buckets);
-            calculationFrames = parameters.calculationFrames;
-            frames += 1.0;
-            buckets = initializeBuckets(bucketWidth, bucketHeight);
+            density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
+        frames += 1.0;
         currentNode = currentNode.parent;
     }
     if ((ai.status == GameStatus.ALOTSPAWNERS ||
@@ -482,7 +468,13 @@ function evaluateOne(id, parameters, input) {
             errorType: ai.status,
             // constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
             constraints: getFitness(bestNode.world.boss.getHealth()),
-            behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
+            behavior: [
+                calculateBiEntropy(actionSequence),
+                // bulletFrames / Math.max(1, bulletFrames), 
+                risk / Math.max(1, bulletFrames),
+                distribution / Math.max(1, bulletFrames),
+                density / Math.max(1, bulletFrames)
+            ]
         };
     }
     return {
@@ -491,6 +483,12 @@ function evaluateOne(id, parameters, input) {
         bossHealth: bestNode.world.boss.getHealth(),
         errorType: ai.status,
         constraints: 1,
-        behavior: [calculateBiEntropy(actionSequence), risk / Math.max(1, frames), distribution / Math.max(1, frames), density / Math.max(1, frames)]
+        behavior: [
+            calculateBiEntropy(actionSequence),
+            // bulletFrames / Math.max(1, frames),
+            risk / Math.max(1, bulletFrames),
+            distribution / Math.max(1, bulletFrames),
+            density / Math.max(1, bulletFrames)
+        ]
     };
 }

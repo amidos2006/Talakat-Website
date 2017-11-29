@@ -79,29 +79,21 @@ class Chromosome {
         children[1].fitness = null;
         children[1].constraints = null;
         children[1].behavior = null;
-        for (let i: number = 0; i < children[0].spawnersSequence.length; i++) {
-            if (random(0, 1.0) < 0.5) {
-                let swapPoint: number = Math.floor(random(0, children[0].spawnersSequence[i].length));
-                for (let j: number = 0; j < children[0].spawnersSequence[i].length; j++) {
-                    if (i > swapPoint) {
-                        let temp: number = children[0].spawnersSequence[i][j];
-                        children[0].spawnersSequence[i][j] = children[1].spawnersSequence[i][j];
-                        children[1].spawnersSequence[i][j] = temp;
-                    }
-                }
-            }
-        }
-        if (random(0, 1.0) < 0.5) {
-            let swapPoint: number = Math.floor(random(0, children[0].scriptSequence.length));
-            for (let i: number = 0; i < children[0].scriptSequence.length; i++) {
-                if (i > swapPoint) {
-                    let temp: number = children[0].scriptSequence[i];
-                    children[0].scriptSequence[i] = children[1].scriptSequence[i];
-                    children[1].scriptSequence[i] = temp;
-                }
-            }
-        }
 
+        if (random(0, 1.0) < 0.5) {
+            let temp:number[] = children[0].scriptSequence;
+            children[0].scriptSequence = children[1].scriptSequence;
+            children[1].scriptSequence = temp;
+        }
+        else{
+            for (let i: number = 0; i < children[0].spawnersSequence.length; i++) {
+                if (random(0, 1.0) < 0.5) {
+                    let temp:number[] = children[0].spawnersSequence[i];
+                    children[0].spawnersSequence[i] = children[1].spawnersSequence[i];
+                    children[1].spawnersSequence[i] = temp;
+                }
+            }
+        }
         return children;
     }
 
@@ -111,20 +103,19 @@ class Chromosome {
         mutated.constraints = null;
         mutated.behavior = null;
 
-        for (let i: number = 0; i < mutated.spawnersSequence.length; i++) {
-            if (random(0, 1.0) < 0.5) {
-                for (let j: number = 0; j < mutated.spawnersSequence.length; j++) {
-                    mutated.spawnersSequence[i][j] += Math.round(random(-mutationSize, mutationSize));
-                    if (mutated.spawnersSequence[i][j] < 0) {
-                        mutated.spawnersSequence[i][j] += maxValue;
-                    }
-                    if (mutated.spawnersSequence[i][j] >= maxValue) {
-                        mutated.spawnersSequence[i][j] -= maxValue;
-                    }
+        let index:number = Math.floor(random(0, mutated.spawnersSequence.length + 1));
+        if(index < mutated.spawnersSequence.length){
+            for (let i: number = 0; i < mutated.spawnersSequence[index].length; i++) {
+                mutated.spawnersSequence[index][i] += Math.round(random(-mutationSize, mutationSize));
+                if (mutated.spawnersSequence[index][i] < 0) {
+                    mutated.spawnersSequence[index][i] += maxValue;
+                }
+                if (mutated.spawnersSequence[index][i] >= maxValue) {
+                    mutated.spawnersSequence[index][i] -= maxValue;
                 }
             }
         }
-        if (random(0, 1.0) < 0.5) {
+        else{
             for (let i: number = 0; i < mutated.scriptSequence.length; i++) {
                 mutated.scriptSequence[i] += Math.round(random(-mutationSize, mutationSize));
                 if (mutated.scriptSequence[i] < 0) {
@@ -133,6 +124,11 @@ class Chromosome {
                 if (mutated.scriptSequence[i] >= maxValue) {
                     mutated.scriptSequence[i] -= maxValue;
                 }
+            }
+        }
+        for (let i: number = 0; i < mutated.spawnersSequence.length; i++) {
+            if (random(0, 1.0) < 0.5) {
+                
             }
         }
 

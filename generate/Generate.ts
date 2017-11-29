@@ -73,15 +73,7 @@ class Evaluator{
             let w: Worker = new Worker("js/evaluator.js");
             w.postMessage(data);
             w.onmessage = function (event) {
-                for (let i: number = 0; i < event.data.id.length; i++) {
-                    recordedMessages.push({
-                        id: event.data.id[i],
-                        fitness: event.data.fitness[i],
-                        constraints: event.data.constraints[i],
-                        errorType: event.data.errorType[i],
-                        behavior: event.data.behavior[i]
-                    });
-                }
+                recordedMessages.push(event.data);
             }
             this.workers.push(w);
         }
@@ -136,14 +128,30 @@ class MapElite{
     }
 
     randomInitailzie(): void {
-        debugLog("Initializing The Map.\n");
         let chromosomes:Chromosome[] = [];
-        for (let i: number = 0; i < parameters.initializationSize; i++) {
+        let patchSize:number = Math.min(parameters.initializationSize, parameters.patchSize);
+        for (let i: number = 0; i < patchSize; i++) {
             let c: Chromosome = new Chromosome();
             c.randomInitialize(spawnerNumbers, parameters.sequenceSize, parameters.maxValue);
             chromosomes.push(c);
         }
+        parameters.initializationSize -= patchSize;
         this.evaluator.startEvaluation(chromosomes, parameters);
+    }
+
+    updateInitialize():void{
+        if(this.evaluator.running && !this.evaluator.checkDone()){
+            return;
+        }
+        if (this.evaluator.running) {
+            let pop: Chromosome[] = this.evaluator.finishEvaluation();
+            for (let c of pop) {
+                this.assignMap(c);
+            }
+        }
+        if(parameters.initializationSize > 0){
+            this.randomInitailzie();
+        }
     }
 
     updateMap():void{
@@ -165,7 +173,7 @@ class MapElite{
         debugLog("Behaviors: " + tempBest.behavior + "\n");
         debugLog("########################################\n");
         let pop:Chromosome[] = [];
-        while (pop.length < parameters.populationSize){
+        while (pop.length < parameters.patchSize){
             let newChromosomes:Chromosome[] = [];
             let elites:Elite[] = this.randomSelect();
             if(random(0.0, 1.0) < elites.length / this.mapSize){
@@ -196,11 +204,10 @@ class MapElite{
     }
 
     private assignMap(c: Chromosome):void{
-        let index:string = "";
-        index += Math.floor(c.behavior[0] * parameters.dimensionSize) + "," + 
-            Math.floor(c.behavior[1] * parameters.dimensionSize) + "," + 
-            Math.floor(c.behavior[2] * parameters.dimensionSize) + "," +
-            Math.floor(c.behavior[3] * parameters.dimensionSize);
+        let index: string = "" + Math.floor(c.behavior[0] * parameters.dimensionSize);
+        for (let i: number = 1; i < c.behavior.length; i++){
+            index += "," + Math.floor(c.behavior[i] * parameters.dimensionSize);
+        }
         if(this.map[index] != undefined){
             if(c.constraints == 1 && (this.map[index].best == null || 
                 this.map[index].best.fitness < c.fitness)){
@@ -353,7 +360,7 @@ function stopEvolution() {
     }
 }
 
-function startEvolution(populationSize:number, threads:number, initializationSize:number=100){
+function startEvolution(populationSize:number, threads:number, initializationSize:number, patchSize:number){
     if(populationSize == undefined){
         return;
     }
@@ -361,6 +368,7 @@ function startEvolution(populationSize:number, threads:number, initializationSiz
     parameters.threadNumbers = threads;
     parameters.populationSize = populationSize;
     parameters.initializationSize = initializationSize;
+    parameters.patchSize = patchSize;
     mapElite = new MapElite();
     mapElite.randomInitailzie();
     interval = setInterval(updateEvolution, parameters.checkInterval);
@@ -368,7 +376,12 @@ function startEvolution(populationSize:number, threads:number, initializationSiz
 }
 
 function updateEvolution(){
-    mapElite.updateMap();
+    if(parameters.initializationSize > 0){
+        mapElite.updateInitialize();
+    }
+    else{
+        mapElite.updateMap();
+    }
 }
 
 let keys: any = {

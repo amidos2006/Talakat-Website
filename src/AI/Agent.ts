@@ -1,9 +1,10 @@
 enum GameStatus {
-    WIN,
-    LOSE,
-    TOOSLOW,
-    TIMEOUT,
     NONE,
+    LOSE,
+    WIN,
+    NODEOUT,
+    TIMEOUT,
+    TOOSLOW,
     SPAWNERSTOBULLETS,
     ALOTSPAWNERS
 }
