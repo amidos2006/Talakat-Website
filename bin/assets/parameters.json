@@ -9,6 +9,7 @@
     "maxStepTime": 100,
     "maxAgentTime": 50000,
     "maxSpawnerFrames": 10,
+    "bulletsFrame": 10,
     "maxNumSpawners": 200,
     "maxNumBullets": 1000,
     "bulletToSpawner": 0.5,
@@ -18,8 +19,8 @@
     "saveFrames": "results/",
     "totalLevelsToTest": 1000,
 
-    "bucketsX": 8,
-    "bucketsY": 10,
+    "bucketsX": 14,
+    "bucketsY": 20,
 
     "sequenceSize": 23,
     "maxValue": 100,

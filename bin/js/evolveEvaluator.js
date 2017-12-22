@@ -154,43 +154,83 @@ var AStarPlanner = (function () {
     };
     return AStarPlanner;
 }());
-function checkForLoop(input, name, depth, maxDepth) {
-    if (depth >= maxDepth) {
-        return false;
+var AStar = (function () {
+    function AStar(parameters) {
+        this.parameters = parameters;
     }
-    var loop = [];
-    for (var _i = 0, _a = input.spawners[name].pattern; _i < _a.length; _i++) {
-        var n = _a[_i];
-        if (n != "bullet" && n != "wait") {
-            loop.push(n);
+    AStar.prototype.initialize = function () {
+        this.status = GameStatus.NONE;
+    };
+    AStar.prototype.getAction = function (world, value) {
+        var startTime = new Date().getTime();
+        var openNodes = [new TreeNode(null, -1, world.clone())];
+        var bestNode = openNodes[0];
+        var currentNumbers = 0;
+        var solution = [];
+        while (openNodes.length > 0 && solution.length == 0) {
+            if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                break;
+            }
+            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
+            var currentNode = openNodes.pop();
+            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+                if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                    continue;
+                }
+                for (var i = 0; i < currentNode.children.length; i++) {
+                    var node = currentNode.addChild(i, this.parameters.repeatingAction);
+                    if (node.world.isWon()) {
+                        solution = node.getSequence();
+                        break;
+                    }
+                    if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
+                        bestNode = node;
+                    }
+                    openNodes.push(node);
+                    currentNumbers += 1;
+                }
+            }
         }
-    }
-    for (var _b = 0, loop_1 = loop; _b < loop_1.length; _b++) {
-        var n = loop_1[_b];
-        return checkForLoop(input, n, depth + 1, maxDepth);
-    }
-    return true;
-}
-function checkForBullets(input, name, depth, maxDepth) {
-    if (depth >= maxDepth) {
-        return false;
-    }
-    var loop = [];
-    for (var _i = 0, _a = input.spawners[name].pattern; _i < _a.length; _i++) {
-        var n = _a[_i];
-        if (n == "bullet") {
-            return true;
+        if (solution.length > 0) {
+            return solution.splice(0, 1)[0];
         }
-        else if (n != "wait") {
-            loop.push(n);
+        var action = bestNode.getSequence().splice(0, 1)[0];
+        return action;
+    };
+    AStar.prototype.playGame = function (world, value) {
+        var spawnerFrames = 0;
+        var currentNode = new TreeNode(null, -1, world);
+        this.status = GameStatus.LOSE;
+        while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+            var action = this.getAction(currentNode.world, value);
+            var tempStartGame = new Date().getTime();
+            currentNode = currentNode.addChild(action, parameters.repeatingAction);
+            if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
+                this.status = GameStatus.TOOSLOW;
+                return currentNode;
+            }
+            if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
+                spawnerFrames += 1;
+                if (spawnerFrames > this.parameters.maxSpawnerFrames) {
+                    this.status = GameStatus.SPAWNERSTOBULLETS;
+                    return currentNode;
+                }
+            }
+            else {
+                spawnerFrames = 0;
+            }
+            if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+                this.status = GameStatus.ALOTSPAWNERS;
+                return currentNode;
+            }
         }
-    }
-    for (var _b = 0, loop_2 = loop; _b < loop_2.length; _b++) {
-        var n = loop_2[_b];
-        return checkForBullets(input, n, depth + 1, maxDepth);
-    }
-    return false;
-}
+        if (currentNode.world.isWon()) {
+            this.status = GameStatus.WIN;
+        }
+        return currentNode;
+    };
+    return AStar;
+}());
 function calculateEntropy(values) {
     var result = 0;
     for (var _i = 0, values_1 = values; _i < values_1.length; _i++) {
@@ -201,45 +241,38 @@ function calculateEntropy(values) {
     }
     return result;
 }
+function calculateSequenceEntropy(sequence) {
+    var dic = {};
+    for (var _i = 0, sequence_1 = sequence; _i < sequence_1.length; _i++) {
+        var v = sequence_1[_i];
+        if (!dic.hasOwnProperty(v.toString())) {
+            dic[v.toString()] = 0;
+        }
+        dic[v.toString()] += 1;
+    }
+    var prob = [];
+    for (var s in dic) {
+        prob.push(dic[s] / sequence.length);
+    }
+    return calculateEntropy(prob);
+}
+function getSequenceDerivative(sequence) {
+    var der = [];
+    for (var i = 1; i < sequence.length; i++) {
+        if (sequence[i] != sequence[i - 1]) {
+            der.push(1);
+        }
+        else {
+            der.push(0);
+        }
+    }
+    return der;
+}
 function calculateBiEntropy(actionSequence) {
-    var entropy = 0;
-    var der1 = [];
-    var der2 = [];
-    var prob = [0, 0, 0, 0, 0];
-    for (var i = 0; i < actionSequence.length; i++) {
-        prob[actionSequence[i]] += 1.0;
-        if (i > 0 && actionSequence[i] != actionSequence[i - 1]) {
-            der1.push(1);
-        }
-        else {
-            der1.push(0);
-        }
-    }
-    for (var i = 0; i < prob.length; i++) {
-        prob[i] /= actionSequence.length;
-    }
-    entropy += calculateEntropy(prob);
-    prob = [0, 0];
-    for (var i = 0; i < der1.length; i++) {
-        prob[actionSequence[i]] += 1.0;
-        if (i > 0 && der1[i] != der1[i - 1]) {
-            der2.push(1);
-        }
-        else {
-            der2.push(0);
-        }
-    }
-    prob[0] /= der1.length;
-    prob[1] /= der1.length;
-    entropy += calculateEntropy(prob);
-    prob = [0, 0];
-    for (var i = 0; i < der1.length; i++) {
-        prob[actionSequence[i]] += 1.0;
-    }
-    prob[0] /= der2.length;
-    prob[1] /= der2.length;
-    entropy += calculateEntropy(prob);
-    return entropy / 3.0;
+    var entropy = calculateSequenceEntropy(actionSequence);
+    var der = getSequenceDerivative(actionSequence);
+    entropy += calculateSequenceEntropy(der);
+    return entropy / 2.0;
 }
 function calculateDistribution(buckets) {
     var result = 0;
@@ -344,25 +377,11 @@ function evaluate(filePath, parameters, game) {
     fs.unlinkSync("input/" + filePath);
 }
 function evaluateOne(parameters, input) {
-    var numLoops = 0;
-    for (var name_1 in input.spawners) {
-        if (checkForLoop(input, name_1, 0, parameters.maxDepth)) {
-            numLoops += 1;
-        }
-    }
-    var numBullets = 0;
-    var numSpawners = 0;
-    for (var name_2 in input.spawners) {
-        if (checkForBullets(input, name_2, 0, parameters.maxDepth)) {
-            numBullets += 1.0;
-        }
-        numSpawners += 1;
-    }
     var startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
-    var ai = new AStarPlanner(parameters);
+    var ai = new AStar(parameters);
     ai.initialize();
-    var bestNode = ai.plan(startWorld.clone(), parameters.maxAgentTime);
+    var bestNode = ai.playGame(startWorld.clone(), parameters.maxAgentTime);
     var risk = 0;
     var distribution = 0;
     var density = 0;
@@ -375,7 +394,7 @@ function evaluateOne(parameters, input) {
     var actionSequence = bestNode.getSequence(parameters.repeatingAction);
     var currentNode = bestNode;
     while (currentNode.parent != null) {
-        if (currentNode.world.bullets.length > 0) {
+        if (currentNode.world.bullets.length > parameters.bulletsFrame) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
@@ -386,21 +405,19 @@ function evaluateOne(parameters, input) {
         frames += 1.0;
         currentNode = currentNode.parent;
     }
-    if ((ai.status == GameStatus.ALOTSPAWNERS ||
+    if (ai.status == GameStatus.ALOTSPAWNERS ||
         ai.status == GameStatus.SPAWNERSTOBULLETS ||
-        ai.status == GameStatus.TOOSLOW)) {
+        ai.status == GameStatus.TOOSLOW) {
         return {
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            // constraints: getConstraints(numLoops, numBullets / numSpawners, bestNode.world.boss.getHealth()),
             constraints: getFitness(bestNode.world.boss.getHealth()),
             behavior: [
                 calculateBiEntropy(actionSequence),
-                // bulletFrames / Math.max(1, bulletFrames), 
                 risk / Math.max(1, bulletFrames),
                 distribution / Math.max(1, bulletFrames),
-                density / Math.max(1, bulletFrames)
+                bulletFrames / Math.max(1, frames)
             ]
         };
     }
@@ -411,10 +428,9 @@ function evaluateOne(parameters, input) {
         constraints: 1,
         behavior: [
             calculateBiEntropy(actionSequence),
-            // bulletFrames / Math.max(1, frames),
             risk / Math.max(1, bulletFrames),
             distribution / Math.max(1, bulletFrames),
-            density / Math.max(1, bulletFrames)
+            bulletFrames / Math.max(1, frames)
         ]
     };
 }
