@@ -1,0 +1,12 @@
+{
+	"compilerOptions": {
+		"target": "es5",
+		"sourceMap": false,
+		"outDir": "bin",
+		"outFile": "../bin/js/evolve.js"
+	},
+	"include": [
+		"Generate.ts",
+		"Chromosome.ts"
+	]
+}

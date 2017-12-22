@@ -1,0 +1,11 @@
+{
+	"compilerOptions": {
+		"target": "es5",
+		"sourceMap": false,
+		"outDir": "bin",
+		"outFile": "../bin/js/evolveEvaluator.js"
+	},
+	"include": [
+		"Evaluator.ts"
+	]
+}

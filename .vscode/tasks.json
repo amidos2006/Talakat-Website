@@ -28,6 +28,22 @@
             ]
         },
         {
+            "label": "Build Evolve Environment",
+            "type": "typescript",
+            "tsconfig": "evolve/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ]
+        },
+        {
+            "label": "Build Evolve Evaluator Environment",
+            "type": "typescript",
+            "tsconfig": "evolveEvaluator/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ]
+        },
+        {
             "label": "Build Worker",
             "type": "typescript",
             "tsconfig": "evaluator/tsconfig.json",
