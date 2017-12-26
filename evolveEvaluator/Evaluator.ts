@@ -66,10 +66,13 @@ class TreeNode {
         this.numChildren = 0;
     }
 
-    addChild(action: number, macroAction: number = 1): TreeNode {
+    addChild(action: number, macroAction: number = 1, spawnersLimit:number = 1000): TreeNode {
         let newWorld: any = this.world.clone();
         for (let i: number = 0; i < macroAction; i++) {
             newWorld.update(ActionNumber.getAction(action));
+            if(newWorld.spawners.length > spawnersLimit){
+                break;
+            }
         }
         this.children[action] = new TreeNode(this, action, newWorld);
         this.numChildren += 1;
@@ -149,7 +152,7 @@ class AStarPlanner{
                 }
                 for (let i: number = 0; i < currentNode.children.length; i++) {
                     let tempStartGame: number = new Date().getTime();
-                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction);
+                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
                     if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
                         this.status = GameStatus.TOOSLOW;
                         return bestNode;
@@ -186,17 +189,22 @@ class AStar {
         let currentNumbers: number = 0;
         let solution: number[] = [];
         while (openNodes.length > 0 && solution.length == 0) {
-            if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
-                break;
-            }
             openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
             let currentNode: TreeNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.parameters.agentType == "node" && currentNumbers >= value) {
-                    continue;
-                }
                 for (let i: number = 0; i < currentNode.children.length; i++) {
-                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction);
+                    // console.log("Start One Action")
+                    if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                        break;
+                    }
+                    if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                        break;
+                    }
+                    if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+                        break;
+                    }
+                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
+                    // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
@@ -220,18 +228,23 @@ class AStar {
         let spawnerFrames: number = 0;
         let currentNode:TreeNode = new TreeNode(null, -1, world);
         this.status = GameStatus.LOSE;
+        let startGame:number = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()){
-            let action:number = this.getAction(currentNode.world, value);
+            // console.log("Get Action")
+            let action:number = this.getAction(currentNode.world.clone(), value);
             let tempStartGame: number = new Date().getTime();
-            currentNode = currentNode.addChild(action, parameters.repeatingAction);
+            // console.log("Make 10 Moves")
+            currentNode = currentNode.addChild(action, parameters.repeatingAction, parameters.maxNumSpawners);
             if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
                 this.status = GameStatus.TOOSLOW;
+                currentNode.world.spawners.length = 0;
                 return currentNode;
             }
             if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
                 spawnerFrames += 1;
                 if (spawnerFrames > this.parameters.maxSpawnerFrames) {
                     this.status = GameStatus.SPAWNERSTOBULLETS;
+                    currentNode.world.spawners.length = 0;
                     return currentNode;
                 }
             }
@@ -240,12 +253,25 @@ class AStar {
             }
             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                 this.status = GameStatus.ALOTSPAWNERS;
+                currentNode.world.spawners.length = 0;
                 return currentNode;
             }
+            if (new Date().getTime() - startGame > this.parameters.maxAgentTime){
+                this.status = GameStatus.TIMEOUT;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
+            // console.log("Boss Health: " + currentNode.world.boss.getHealth())
+            // console.log("Spawners: " + currentNode.world.spawners.length)
+            // console.log("Bullets: " + currentNode.world.bullets.length)
+            currentNode.parent.world.spawners.length = 0;
+            // console.log("Spawners After: " + currentNode.world.spawners.length)
         }
+
         if (currentNode.world.isWon()){
             this.status = GameStatus.WIN;
         }
+        currentNode.world.spawners.length = 0;
         return currentNode;
     }
 }
@@ -409,7 +435,7 @@ function evaluateOne(parameters:any, input:any){
     startWorld.initialize(input);
     let ai: AStar = new AStar(parameters);
     ai.initialize();
-    let bestNode: TreeNode = ai.playGame(startWorld.clone(), parameters.maxAgentTime);
+    let bestNode: TreeNode = ai.playGame(startWorld.clone(), parameters.agentValue);
 
     let risk: number = 0;
     let distribution: number = 0;
@@ -433,6 +459,7 @@ function evaluateOne(parameters:any, input:any){
         }
         frames += 1.0;
         currentNode = currentNode.parent;
+        currentNode.children.length = 0;
     }
 
     if (ai.status == GameStatus.ALOTSPAWNERS || 
