@@ -1,225 +1,3 @@
-var GameStatus;
-(function (GameStatus) {
-    GameStatus[GameStatus["NONE"] = 0] = "NONE";
-    GameStatus[GameStatus["LOSE"] = 1] = "LOSE";
-    GameStatus[GameStatus["WIN"] = 2] = "WIN";
-    GameStatus[GameStatus["NODEOUT"] = 3] = "NODEOUT";
-    GameStatus[GameStatus["TIMEOUT"] = 4] = "TIMEOUT";
-    GameStatus[GameStatus["TOOSLOW"] = 5] = "TOOSLOW";
-    GameStatus[GameStatus["SPAWNERSTOBULLETS"] = 6] = "SPAWNERSTOBULLETS";
-    GameStatus[GameStatus["ALOTSPAWNERS"] = 7] = "ALOTSPAWNERS";
-})(GameStatus || (GameStatus = {}));
-var ActionNumber = (function () {
-    function ActionNumber() {
-    }
-    ActionNumber.getAction = function (action) {
-        if (action == ActionNumber.LEFT) {
-            return new Talakat.Point(-1, 0);
-        }
-        if (action == ActionNumber.RIGHT) {
-            return new Talakat.Point(1, 0);
-        }
-        if (action == ActionNumber.UP) {
-            return new Talakat.Point(0, -1);
-        }
-        if (action == ActionNumber.DOWN) {
-            return new Talakat.Point(0, 1);
-        }
-        if (action == ActionNumber.LEFT_DOWN) {
-            return new Talakat.Point(-1, 1);
-        }
-        if (action == ActionNumber.RIGHT_DOWN) {
-            return new Talakat.Point(1, 1);
-        }
-        if (action == ActionNumber.LEFT_UP) {
-            return new Talakat.Point(-1, -1);
-        }
-        if (action == ActionNumber.RIGHT_UP) {
-            return new Talakat.Point(1, -1);
-        }
-        return new Talakat.Point();
-    };
-    return ActionNumber;
-}());
-ActionNumber.LEFT = 0;
-ActionNumber.RIGHT = 1;
-ActionNumber.UP = 2;
-ActionNumber.DOWN = 3;
-ActionNumber.NONE = 4;
-ActionNumber.LEFT_UP = 5;
-ActionNumber.RIGHT_UP = 6;
-ActionNumber.LEFT_DOWN = 7;
-ActionNumber.RIGHT_DOWN = 8;
-var TreeNode = (function () {
-    function TreeNode(parent, action, world) {
-        this.parent = parent;
-        this.children = [null, null, null, null, null];
-        this.action = action;
-        this.world = world;
-        this.numChildren = 0;
-    }
-    TreeNode.prototype.addChild = function (action, macroAction) {
-        if (macroAction === void 0) { macroAction = 1; }
-        var newWorld = this.world.clone();
-        for (var i = 0; i < macroAction; i++) {
-            newWorld.update(ActionNumber.getAction(action));
-        }
-        this.children[action] = new TreeNode(this, action, newWorld);
-        this.numChildren += 1;
-        return this.children[action];
-    };
-    TreeNode.prototype.getEvaluation = function (noise) {
-        if (noise === void 0) { noise = 0; }
-        var isLose = 0;
-        if (this.world.isLose()) {
-            isLose = 1;
-        }
-        return 1 - this.world.boss.getHealth() - isLose;
-    };
-    TreeNode.prototype.getSequence = function (macroAction) {
-        if (macroAction === void 0) { macroAction = 1; }
-        var result = [];
-        var currentNode = this;
-        while (currentNode.parent != null) {
-            for (var i = 0; i < macroAction; i++) {
-                result.push(currentNode.action);
-            }
-            currentNode = currentNode.parent;
-        }
-        return result.reverse();
-    };
-    return TreeNode;
-}());
-/// <reference path="TreeNode.ts"/>
-var AStarPlanner = (function () {
-    function AStarPlanner(parameters) {
-        this.parameters = parameters;
-    }
-    AStarPlanner.prototype.initialize = function () {
-        this.status = GameStatus.NONE;
-    };
-    AStarPlanner.prototype.plan = function (world, value) {
-        var startTime = new Date().getTime();
-        var numNodes = 0;
-        var spawnerFrames = 0;
-        var openNodes = [new TreeNode(null, -1, world)];
-        var bestNode = openNodes[0];
-        this.status = GameStatus.LOSE;
-        while (openNodes.length > 0) {
-            if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
-                this.status = GameStatus.TIMEOUT;
-                return bestNode;
-            }
-            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
-            var currentNode = openNodes.pop();
-            if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
-                bestNode = currentNode;
-            }
-            if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-                spawnerFrames += 1;
-                if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-                    this.status = GameStatus.SPAWNERSTOBULLETS;
-                    return bestNode;
-                }
-            }
-            else {
-                spawnerFrames = 0;
-            }
-            if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                this.status = GameStatus.ALOTSPAWNERS;
-                return bestNode;
-            }
-            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.parameters.agentType == "node" && numNodes > value) {
-                    this.status = GameStatus.NODEOUT;
-                    continue;
-                }
-                for (var i = 0; i < currentNode.children.length; i++) {
-                    var tempStartGame = new Date().getTime();
-                    var node = currentNode.addChild(i, this.parameters.repeatingAction);
-                    if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                        this.status = GameStatus.TOOSLOW;
-                        return bestNode;
-                    }
-                    if (node.world.isWon()) {
-                        this.status = GameStatus.WIN;
-                        return node;
-                    }
-                    openNodes.push(node);
-                    numNodes += 1;
-                }
-            }
-        }
-        return bestNode;
-    };
-    return AStarPlanner;
-}());
-var AStar = (function () {
-    function AStar(type, repeatingAction) {
-        this.type = type;
-        this.repeatingAction = repeatingAction;
-    }
-    AStar.prototype.initialize = function () {
-    };
-    AStar.prototype.getAction = function (world, value) {
-        var startTime = new Date().getTime();
-        var openNodes = [new TreeNode(null, -1, world.clone())];
-        var bestNode = openNodes[0];
-        var currentNumbers = 0;
-        var solution = [];
-        while (openNodes.length > 0 && solution.length == 0) {
-            if (this.type == "time" && new Date().getTime() - startTime >= value) {
-                break;
-            }
-            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
-            var currentNode = openNodes.pop();
-            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.type == "node" && currentNumbers >= value) {
-                    continue;
-                }
-                for (var i = 0; i < currentNode.children.length; i++) {
-                    var node = currentNode.addChild(i, this.repeatingAction);
-                    if (node.world.isWon()) {
-                        solution = node.getSequence();
-                        break;
-                    }
-                    if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
-                        bestNode = node;
-                    }
-                    openNodes.push(node);
-                    currentNumbers += 1;
-                }
-            }
-        }
-        if (solution.length > 0) {
-            return solution.splice(0, 1)[0];
-        }
-        var action = bestNode.getSequence().splice(0, 1)[0];
-        return action;
-    };
-    return AStar;
-}());
-/// <reference path="TreeNode.ts"/>
-var OneStepLookAhead = (function () {
-    function OneStepLookAhead(type, repeatingAction) {
-        this.type = type;
-        this.repeatingAction = repeatingAction;
-    }
-    OneStepLookAhead.prototype.initialize = function () {
-    };
-    OneStepLookAhead.prototype.getAction = function (world, value) {
-        var rootNode = new TreeNode(null, -1, world.clone());
-        var bestNode = rootNode;
-        for (var i = 0; i < rootNode.children.length; i++) {
-            var node = rootNode.addChild(i, this.repeatingAction);
-            if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
-                bestNode = node;
-            }
-        }
-        return bestNode.getSequence().splice(0, 1)[0];
-    };
-    return OneStepLookAhead;
-}());
 importScripts("talakat.js");
 this.onmessage = function (event) {
     var chromosome = event.data;
@@ -335,13 +113,13 @@ function getMaxBulletsBucket(buckets) {
 function calculateDensity(buckets, bulletNumber) {
     return getMaxBulletsBucket(buckets) / bulletNumber;
 }
-function calculateRisk(player, width, height, buckets) {
+function calculateRisk(player, width, height, bucketsX, buckets) {
     var result = 0;
     var x = Math.floor(player.x / width);
     var y = Math.floor(player.y / height);
     for (var dx = -1; dx <= 1; dx++) {
         for (var dy = -1; dy <= 1; dy++) {
-            var index = (y + dy) * width + (x + dx);
+            var index = (y + dy) * bucketsX + (x + dx);
             if (index >= buckets.length) {
                 index = buckets.length - 1;
             }
@@ -451,7 +229,7 @@ function evaluateOne(id, parameters, input) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, parameters.bucketsX, buckets);
             distribution += calculateDistribution(buckets);
             density += calculateDensity(buckets, currentNode.world.bullets.length);
         }

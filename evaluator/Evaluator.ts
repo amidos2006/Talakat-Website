@@ -118,13 +118,13 @@ function calculateDensity(buckets:number[], bulletNumber:number):number{
     return getMaxBulletsBucket(buckets) / bulletNumber;
 }
 
-function calculateRisk(player:Talakat.Player, width:number, height:number, buckets:number[]):number{
+function calculateRisk(player:Talakat.Player, width:number, height:number, bucketsX:number, buckets:number[]):number{
     let result:number = 0;
     let x:number = Math.floor(player.x / width);
     let y:number = Math.floor(player.y / height);
     for(let dx:number=-1; dx<=1; dx++){
         for(let dy:number=-1; dy<=1; dy++){
-            let index:number = (y + dy) * width + (x + dx);
+            let index:number = (y + dy) * bucketsX + (x + dx);
             if(index >= buckets.length){
                 index = buckets.length - 1;
             }
@@ -243,7 +243,7 @@ function evaluateOne(id:number, parameters:any, input:any){
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, parameters.bucketsX, buckets);
             distribution += calculateDistribution(buckets);
             density += calculateDensity(buckets, currentNode.world.bullets.length);
         }

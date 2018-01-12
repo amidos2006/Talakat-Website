@@ -52,24 +52,30 @@ ActionNumber.RIGHT_UP = 6;
 ActionNumber.LEFT_DOWN = 7;
 ActionNumber.RIGHT_DOWN = 8;
 var TreeNode = (function () {
-    function TreeNode(parent, action, world) {
+    function TreeNode(parent, action, world, parameters) {
         this.parent = parent;
         this.children = [null, null, null, null, null];
         this.action = action;
         this.world = world;
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.safezone = Math.min(1, (parameters.maxNumBullets -
+            this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets)) / parameters.maxNumBullets);
+        this.futurezone = this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) / (parameters.bucketsX + parameters.bucketsY);
         this.numChildren = 0;
     }
-    TreeNode.prototype.addChild = function (action, macroAction, spawnersLimit) {
+    TreeNode.prototype.addChild = function (action, macroAction, parameters) {
         if (macroAction === void 0) { macroAction = 1; }
-        if (spawnersLimit === void 0) { spawnersLimit = 1000; }
         var newWorld = this.world.clone();
         for (var i = 0; i < macroAction; i++) {
             newWorld.update(ActionNumber.getAction(action));
-            if (newWorld.spawners.length > spawnersLimit) {
+            if (newWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
         }
-        this.children[action] = new TreeNode(this, action, newWorld);
+        this.children[action] = new TreeNode(this, action, newWorld, parameters);
         this.numChildren += 1;
         return this.children[action];
     };
@@ -79,7 +85,7 @@ var TreeNode = (function () {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 1 - this.world.boss.getHealth() - isLose;
+        return 0.75 * (1 - this.world.boss.getHealth()) + 0.05 * this.safezone - isLose + 0.2 * this.futurezone + noise;
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -93,86 +99,155 @@ var TreeNode = (function () {
         }
         return result.reverse();
     };
-    return TreeNode;
-}());
-var AStarPlanner = (function () {
-    function AStarPlanner(parameters) {
-        this.parameters = parameters;
-    }
-    AStarPlanner.prototype.initialize = function () {
-        this.status = GameStatus.NONE;
+    TreeNode.prototype.initializeBuckets = function (width, height) {
+        var buckets = [];
+        for (var i = 0; i < width * height; i++) {
+            buckets.push(0);
+        }
+        return buckets;
     };
-    AStarPlanner.prototype.plan = function (world, value) {
-        var startTime = new Date().getTime();
-        var numNodes = 0;
-        var spawnerFrames = 0;
-        var openNodes = [new TreeNode(null, -1, world)];
-        var bestNode = openNodes[0];
-        this.status = GameStatus.LOSE;
-        while (openNodes.length > 0) {
-            if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
-                this.status = GameStatus.TIMEOUT;
-                return bestNode;
-            }
-            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
-            var currentNode = openNodes.pop();
-            if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
-                bestNode = currentNode;
-            }
-            if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-                spawnerFrames += 1;
-                if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-                    this.status = GameStatus.SPAWNERSTOBULLETS;
-                    return bestNode;
-                }
-            }
-            else {
-                spawnerFrames = 0;
-            }
-            if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                this.status = GameStatus.ALOTSPAWNERS;
-                return bestNode;
-            }
-            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.parameters.agentType == "node" && numNodes > value) {
-                    this.status = GameStatus.NODEOUT;
-                    continue;
-                }
-                for (var i = 0; i < currentNode.children.length; i++) {
-                    var tempStartGame = new Date().getTime();
-                    var node = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
-                    if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                        this.status = GameStatus.TOOSLOW;
-                        return bestNode;
+    TreeNode.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
+        var s = new Talakat.Point();
+        var e = new Talakat.Point();
+        for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
+            var b = bullets_1[_i];
+            var indeces = [];
+            s.x = Math.floor((b.x - b.radius) / width);
+            s.y = Math.floor((b.y - b.radius) / height);
+            e.x = Math.floor((b.x + b.radius) / width);
+            e.y = Math.floor((b.y + b.radius) / height);
+            for (var x = s.x; x <= e.x; x++) {
+                for (var y = s.y; y < e.y; y++) {
+                    var index_1 = y * bucketX + x;
+                    if (indeces.indexOf(index_1) == -1) {
+                        indeces.push(index_1);
                     }
-                    if (node.world.isWon()) {
-                        this.status = GameStatus.WIN;
-                        return node;
-                    }
-                    openNodes.push(node);
-                    numNodes += 1;
                 }
+            }
+            for (var _a = 0, indeces_1 = indeces; _a < indeces_1.length; _a++) {
+                var index_2 = indeces_1[_a];
+                if (index_2 < 0) {
+                    index_2 = 0;
+                }
+                if (index_2 >= buckets.length) {
+                    index_2 = buckets.length - 1;
+                }
+                buckets[index_2] += 1;
             }
         }
-        return bestNode;
     };
-    return AStarPlanner;
+    TreeNode.prototype.calculateSurroundingBullets = function (x, y, bucketX, buckets) {
+        var result = 0;
+        for (var dx = -1; dx <= 1; dx++) {
+            for (var dy = -1; dy <= 1; dy++) {
+                var index_3 = (y + dy) * bucketX + (x + dx);
+                if (index_3 >= buckets.length) {
+                    index_3 = buckets.length - 1;
+                }
+                if (index_3 < 0) {
+                    index_3 = 0;
+                }
+                result += buckets[index_3];
+            }
+        }
+        return result;
+    };
+    TreeNode.prototype.distanceSafeBucket = function (px, py, bucketX, buckets) {
+        var bestX = px;
+        var bestY = py;
+        for (var i = 0; i < buckets.length; i++) {
+            var x = i % bucketX;
+            var y = Math.floor(i / bucketX);
+            if (this.calculateSurroundingBullets(x, y, bucketX, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, buckets)) {
+                bestX = x;
+                bestY = y;
+            }
+        }
+        return Math.abs(px - bestX) + Math.abs(py - bestY);
+    };
+    return TreeNode;
 }());
+// class AStarPlanner{
+//     parameters: any;
+//     status: GameStatus;
+//     constructor(parameters: any) {
+//         this.parameters = parameters;
+//     }
+//     initialize() {
+//         this.status = GameStatus.NONE;
+//     }
+//     plan(world: any, value: number): TreeNode {
+//         let startTime: number = new Date().getTime();
+//         let numNodes: number = 0;
+//         let spawnerFrames: number = 0;
+//         let openNodes: TreeNode[] = [new TreeNode(null, -1, world)];
+//         let bestNode: TreeNode = openNodes[0];
+//         this.status = GameStatus.LOSE;
+//         while (openNodes.length > 0) {
+//             if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
+//                 this.status = GameStatus.TIMEOUT;
+//                 return bestNode;
+//             }
+//             openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
+//             let currentNode: TreeNode = openNodes.pop();
+//             if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
+//                 bestNode = currentNode;
+//             }
+//             if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
+//                 spawnerFrames += 1;
+//                 if (spawnerFrames > this.parameters.maxSpawnerFrames) {
+//                     this.status = GameStatus.SPAWNERSTOBULLETS;
+//                     return bestNode;
+//                 }
+//             }
+//             else {
+//                 spawnerFrames = 0;
+//             }
+//             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+//                 this.status = GameStatus.ALOTSPAWNERS;
+//                 return bestNode;
+//             }
+//             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+//                 if (this.parameters.agentType == "node" && numNodes > value) {
+//                     this.status = GameStatus.NODEOUT;
+//                     continue;
+//                 }
+//                 for (let i: number = 0; i < currentNode.children.length; i++) {
+//                     let tempStartGame: number = new Date().getTime();
+//                     let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
+//                     if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
+//                         this.status = GameStatus.TOOSLOW;
+//                         return bestNode;
+//                     }
+//                     if (node.world.isWon()) {
+//                         this.status = GameStatus.WIN;
+//                         return node;
+//                     }
+//                     openNodes.push(node);
+//                     numNodes += 1;
+//                 }
+//             }
+//         }
+//         return bestNode;
+//     }
+// }
 var AStar = (function () {
-    function AStar(parameters) {
+    function AStar(parameters, dist) {
         this.parameters = parameters;
+        this.dist = dist;
     }
     AStar.prototype.initialize = function () {
         this.status = GameStatus.NONE;
     };
     AStar.prototype.getAction = function (world, value) {
         var startTime = new Date().getTime();
-        var openNodes = [new TreeNode(null, -1, world.clone())];
+        var openNodes = [new TreeNode(null, -1, world.clone(), this.parameters)];
         var bestNode = openNodes[0];
         var currentNumbers = 0;
         var solution = [];
         while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
+            openNodes.sort(function (a, b) { return a.getEvaluation(dist.ppf(Math.random())) - b.getEvaluation(dist.ppf(Math.random())); });
             var currentNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (var i = 0; i < currentNode.children.length; i++) {
@@ -186,19 +261,19 @@ var AStar = (function () {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    var node = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
+                    var node = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
-                    if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
+                    if (bestNode.numChildren > 0 || node.getEvaluation(dist.ppf(Math.random())) > bestNode.getEvaluation(dist.ppf(Math.random()))) {
                         bestNode = node;
                     }
                     openNodes.push(node);
-                    currentNumbers += 1;
                 }
             }
+            currentNumbers += 1;
         }
         if (solution.length > 0) {
             return solution.splice(0, 1)[0];
@@ -208,7 +283,7 @@ var AStar = (function () {
     };
     AStar.prototype.playGame = function (world, value) {
         var spawnerFrames = 0;
-        var currentNode = new TreeNode(null, -1, world);
+        var currentNode = new TreeNode(null, -1, world, this.parameters);
         this.status = GameStatus.LOSE;
         var startGame = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
@@ -323,20 +398,18 @@ function getMaxBulletsBucket(buckets) {
 function calculateDensity(buckets, bulletNumber) {
     return getMaxBulletsBucket(buckets) / bulletNumber;
 }
-function calculateRisk(player, width, height, buckets) {
+function calculateRisk(x, y, bucketsX, buckets) {
     var result = 0;
-    var x = Math.floor(player.x / width);
-    var y = Math.floor(player.y / height);
     for (var dx = -1; dx <= 1; dx++) {
         for (var dy = -1; dy <= 1; dy++) {
-            var index_1 = (y + dy) * width + (x + dx);
-            if (index_1 >= buckets.length) {
-                index_1 = buckets.length - 1;
+            var index_4 = (y + dy) * bucketsX + (x + dx);
+            if (index_4 >= buckets.length) {
+                index_4 = buckets.length - 1;
             }
-            if (index_1 < 0) {
-                index_1 = 0;
+            if (index_4 < 0) {
+                index_4 = 0;
             }
-            if (buckets[index_1] > 0) {
+            if (buckets[index_4] > 0) {
                 result += 1.0;
             }
         }
@@ -351,43 +424,32 @@ function initializeBuckets(width, height) {
     return buckets;
 }
 function calculateBuckets(width, height, bucketX, bullets, buckets) {
-    var p = new Talakat.Point();
-    for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
-        var b = bullets_1[_i];
+    var s = new Talakat.Point();
+    var e = new Talakat.Point();
+    for (var _i = 0, bullets_2 = bullets; _i < bullets_2.length; _i++) {
+        var b = bullets_2[_i];
         var indeces = [];
-        p.x = b.x - b.radius;
-        p.y = b.y - b.radius;
-        var index_2 = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index_2) == -1) {
-            indeces.push(index_2);
-        }
-        p.x = b.x + b.radius;
-        p.y = b.y - b.radius;
-        index_2 = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index_2) == -1) {
-            indeces.push(index_2);
-        }
-        p.x = b.x - b.radius;
-        p.y = b.y + b.radius;
-        index_2 = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index_2) == -1) {
-            indeces.push(index_2);
-        }
-        p.x = b.x + b.radius;
-        p.y = b.y + b.radius;
-        index_2 = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index_2) == -1) {
-            indeces.push(index_2);
-        }
-        for (var _a = 0, indeces_1 = indeces; _a < indeces_1.length; _a++) {
-            var index_3 = indeces_1[_a];
-            if (index_3 < 0) {
-                index_3 = 0;
+        s.x = Math.floor((b.x - b.radius) / width);
+        s.y = Math.floor((b.y - b.radius) / height);
+        e.x = Math.floor((b.x + b.radius) / width);
+        e.y = Math.floor((b.y + b.radius) / height);
+        for (var x = s.x; x <= e.x; x++) {
+            for (var y = s.y; y < e.y; y++) {
+                var index_5 = y * bucketX + x;
+                if (indeces.indexOf(index_5) == -1) {
+                    indeces.push(index_5);
+                }
             }
-            if (index_3 >= buckets.length) {
-                index_3 = buckets.length - 1;
+        }
+        for (var _a = 0, indeces_2 = indeces; _a < indeces_2.length; _a++) {
+            var index_6 = indeces_2[_a];
+            if (index_6 < 0) {
+                index_6 = 0;
             }
-            buckets[index_3] += 1;
+            if (index_6 >= buckets.length) {
+                index_6 = buckets.length - 1;
+            }
+            buckets[index_6] += 1;
         }
     }
 }
@@ -397,15 +459,15 @@ function getConstraints(loops, bullets, bossHealth) {
 function getFitness(bossHealth) {
     return (1 - bossHealth);
 }
-function evaluate(filePath, parameters, game) {
-    var temp = evaluateOne(parameters, game);
+function evaluate(filePath, parameters, game, dist) {
+    var temp = evaluateOne(parameters, game, dist);
     fs.writeFileSync("output/" + filePath, JSON.stringify(temp));
     fs.unlinkSync("input/" + filePath);
 }
-function evaluateOne(parameters, input) {
+function evaluateOne(parameters, input, dist) {
     var startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
-    var ai = new AStar(parameters);
+    var ai = new AStar(parameters, dist);
     ai.initialize();
     var bestNode = ai.playGame(startWorld.clone(), parameters.agentValue);
     var risk = 0;
@@ -424,7 +486,7 @@ function evaluateOne(parameters, input) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.x / bucketHeight), parameters.bucketsX, buckets);
             distribution += calculateDistribution(buckets);
             density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
@@ -434,17 +496,17 @@ function evaluateOne(parameters, input) {
     }
     if (ai.status == GameStatus.ALOTSPAWNERS ||
         ai.status == GameStatus.SPAWNERSTOBULLETS ||
-        ai.status == GameStatus.TOOSLOW) {
+        ai.status == GameStatus.TOOSLOW ||
+        bulletFrames / Math.max(1, frames) < parameters.targetMaxBulletsFrame) {
         return {
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            constraints: getFitness(bestNode.world.boss.getHealth()),
+            constraints: bulletFrames / Math.max(1, frames) * getFitness(bestNode.world.boss.getHealth()),
             behavior: [
                 calculateBiEntropy(actionSequence),
                 risk / Math.max(1, bulletFrames),
                 distribution / Math.max(1, bulletFrames),
-                bulletFrames / Math.max(1, frames)
             ]
         };
     }
@@ -457,12 +519,12 @@ function evaluateOne(parameters, input) {
             calculateBiEntropy(actionSequence),
             risk / Math.max(1, bulletFrames),
             distribution / Math.max(1, bulletFrames),
-            bulletFrames / Math.max(1, frames)
         ]
     };
 }
 var tracery = require('./tracery.js');
 var fs = require('fs');
+var gaussian = require('gaussian');
 var parameters = JSON.parse(fs.readFileSync("assets/parameters.json"));
 var spawnerGrammar = JSON.parse(fs.readFileSync("assets/spawnerGrammar.json"));
 var scriptGrammar = JSON.parse(fs.readFileSync("assets/scriptGrammar.json"));
@@ -479,13 +541,14 @@ function sleep(amount) {
 }
 var index = parseInt(process.argv[2]);
 var size = parseInt(process.argv[3]);
+var dist = gaussian(0, parameters.noiseStd);
 while (true) {
     for (var i = 0; i < size; i++) {
         var filePath = "input/" + (index * size + i).toString() + ".json";
         if (fs.existsSync(filePath)) {
             sleep(1000);
             var game = JSON.parse(fs.readFileSync(filePath));
-            evaluate((index * size + i).toString() + ".json", parameters, game);
+            evaluate((index * size + i).toString() + ".json", parameters, game, dist);
         }
     }
     sleep(4000);

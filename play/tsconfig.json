@@ -6,8 +6,11 @@
 		"outFile": "../bin/js/play.js"
 	},
 	"include": [
-		"../src/**/*",
 		"Play.ts",
+		"Agent.ts",
+		"AStar.ts",
+		"OneStepLookAhead.ts",
+		"TreeNode.ts",
 		"../definitions/*"
 	]
 }

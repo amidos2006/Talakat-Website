@@ -56,25 +56,38 @@ class TreeNode {
     children: TreeNode[];
     action: number;
     world: any;
+    safezone: number;
+    futurezone: number;
     numChildren: number;
 
-    constructor(parent: TreeNode, action: number, world: any) {
+    constructor(parent: TreeNode, action: number, world: any, parameters:any) {
         this.parent = parent;
         this.children = [null, null, null, null, null];
         this.action = action;
         this.world = world;
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.safezone = Math.min(1, (parameters.maxNumBullets -
+            this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth),
+                Math.floor(world.player.y / bucketHeight),
+                parameters.bucketsX, buckets)) / parameters.maxNumBullets);
+        this.futurezone = this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth),
+            Math.floor(world.player.y / bucketHeight),
+            parameters.bucketsX, buckets) / (parameters.bucketsX + parameters.bucketsY);
         this.numChildren = 0;
     }
 
-    addChild(action: number, macroAction: number = 1, spawnersLimit:number = 1000): TreeNode {
+    addChild(action: number, macroAction: number = 1, parameters:any): TreeNode {
         let newWorld: any = this.world.clone();
         for (let i: number = 0; i < macroAction; i++) {
             newWorld.update(ActionNumber.getAction(action));
-            if(newWorld.spawners.length > spawnersLimit){
+            if (newWorld.spawners.length > parameters.maxNumSpawners){
                 break;
             }
         }
-        this.children[action] = new TreeNode(this, action, newWorld);
+        this.children[action] = new TreeNode(this, action, newWorld, parameters);
         this.numChildren += 1;
         return this.children[action];
     }
@@ -84,7 +97,7 @@ class TreeNode {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 1 - this.world.boss.getHealth() - isLose;
+        return 0.75 * (1 - this.world.boss.getHealth()) + 0.05 * this.safezone - isLose + 0.2 * this.futurezone + noise;
     }
 
     getSequence(macroAction: number = 1): number[] {
@@ -98,84 +111,159 @@ class TreeNode {
         }
         return result.reverse();
     }
-}
 
-class AStarPlanner{
-    parameters: any;
-    status: GameStatus;
-
-    constructor(parameters: any) {
-        this.parameters = parameters;
+    private initializeBuckets(width: number, height: number): number[] {
+        let buckets: number[] = [];
+        for (let i: number = 0; i < width * height; i++) {
+            buckets.push(0);
+        }
+        return buckets;
     }
 
-    initialize() {
-        this.status = GameStatus.NONE;
-    }
+    private calculateBuckets(width: number, height: number, bucketX: number, bullets: any[], buckets: number[]): void {
+        let s = new Talakat.Point();
+        let e = new Talakat.Point();
+        for (let b of bullets) {
+            let indeces: number[] = [];
 
-    plan(world: any, value: number): TreeNode {
-        let startTime: number = new Date().getTime();
-        let numNodes: number = 0;
-        let spawnerFrames: number = 0;
-        let openNodes: TreeNode[] = [new TreeNode(null, -1, world)];
-        let bestNode: TreeNode = openNodes[0];
-        this.status = GameStatus.LOSE;
+            s.x = Math.floor((b.x - b.radius)/ width);
+            s.y = Math.floor((b.y - b.radius) / height);
 
-        while (openNodes.length > 0) {
-            if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
-                this.status = GameStatus.TIMEOUT;
-                return bestNode;
-            }
+            e.x = Math.floor((b.x + b.radius) / width);
+            e.y = Math.floor((b.y + b.radius) / height);
 
-            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
-            let currentNode: TreeNode = openNodes.pop();
-            if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
-                bestNode = currentNode;
-            }
-            if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-                spawnerFrames += 1;
-                if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-                    this.status = GameStatus.SPAWNERSTOBULLETS;
-                    return bestNode;
-                }
-            }
-            else {
-                spawnerFrames = 0;
-            }
-            if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                this.status = GameStatus.ALOTSPAWNERS;
-                return bestNode;
-            }
-            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.parameters.agentType == "node" && numNodes > value) {
-                    this.status = GameStatus.NODEOUT;
-                    continue;
-                }
-                for (let i: number = 0; i < currentNode.children.length; i++) {
-                    let tempStartGame: number = new Date().getTime();
-                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
-                    if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                        this.status = GameStatus.TOOSLOW;
-                        return bestNode;
+            for(let x:number=s.x; x<=e.x; x++){
+                for(let y:number=s.y; y<e.y; y++){
+                    let index = y * bucketX + x;
+                    if (indeces.indexOf(index) == -1) {
+                        indeces.push(index);
                     }
-                    if (node.world.isWon()) {
-                        this.status = GameStatus.WIN;
-                        return node;
-                    }
-                    openNodes.push(node);
-                    numNodes += 1;
                 }
+            }
+
+            for (let index of indeces) {
+                if (index < 0) {
+                    index = 0;
+                }
+                if (index >= buckets.length) {
+                    index = buckets.length - 1;
+                }
+                buckets[index] += 1;
             }
         }
-        return bestNode;
+    }
+
+    private calculateSurroundingBullets(x: number, y: number, bucketX: number, buckets: number[]): number {
+        let result: number = 0;
+        for (let dx: number = -1; dx <= 1; dx++) {
+            for (let dy: number = -1; dy <= 1; dy++) {
+                let index: number = (y + dy) * bucketX + (x + dx);
+                if (index >= buckets.length) {
+                    index = buckets.length - 1;
+                }
+                if (index < 0) {
+                    index = 0;
+                }
+                result += buckets[index];
+            }
+        }
+        return result;
+    }
+
+    private distanceSafeBucket(px: number, py: number, bucketX: number, buckets: number[]): number {
+        let bestX: number = px;
+        let bestY: number = py;
+        for (let i: number = 0; i < buckets.length; i++) {
+            let x: number = i % bucketX;
+            let y: number = Math.floor(i / bucketX);
+            if (this.calculateSurroundingBullets(x, y, bucketX, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, buckets)) {
+                bestX = x;
+                bestY = y;
+            }
+        }
+        return Math.abs(px - bestX) + Math.abs(py - bestY);
     }
 }
+
+// class AStarPlanner{
+//     parameters: any;
+//     status: GameStatus;
+
+//     constructor(parameters: any) {
+//         this.parameters = parameters;
+//     }
+
+//     initialize() {
+//         this.status = GameStatus.NONE;
+//     }
+
+//     plan(world: any, value: number): TreeNode {
+//         let startTime: number = new Date().getTime();
+//         let numNodes: number = 0;
+//         let spawnerFrames: number = 0;
+//         let openNodes: TreeNode[] = [new TreeNode(null, -1, world)];
+//         let bestNode: TreeNode = openNodes[0];
+//         this.status = GameStatus.LOSE;
+
+//         while (openNodes.length > 0) {
+//             if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
+//                 this.status = GameStatus.TIMEOUT;
+//                 return bestNode;
+//             }
+
+//             openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
+//             let currentNode: TreeNode = openNodes.pop();
+//             if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
+//                 bestNode = currentNode;
+//             }
+//             if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
+//                 spawnerFrames += 1;
+//                 if (spawnerFrames > this.parameters.maxSpawnerFrames) {
+//                     this.status = GameStatus.SPAWNERSTOBULLETS;
+//                     return bestNode;
+//                 }
+//             }
+//             else {
+//                 spawnerFrames = 0;
+//             }
+//             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+//                 this.status = GameStatus.ALOTSPAWNERS;
+//                 return bestNode;
+//             }
+//             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+//                 if (this.parameters.agentType == "node" && numNodes > value) {
+//                     this.status = GameStatus.NODEOUT;
+//                     continue;
+//                 }
+//                 for (let i: number = 0; i < currentNode.children.length; i++) {
+//                     let tempStartGame: number = new Date().getTime();
+//                     let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
+//                     if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
+//                         this.status = GameStatus.TOOSLOW;
+//                         return bestNode;
+//                     }
+//                     if (node.world.isWon()) {
+//                         this.status = GameStatus.WIN;
+//                         return node;
+//                     }
+//                     openNodes.push(node);
+//                     numNodes += 1;
+//                 }
+//             }
+//         }
+//         return bestNode;
+//     }
+// }
 
 class AStar {
     parameters: any;
     status: GameStatus;
+    dist:any;
 
-    constructor(parameters:any) {
+    constructor(parameters:any, dist:any) {
         this.parameters = parameters;
+        this.dist = dist;
     }
 
     initialize() {
@@ -184,12 +272,12 @@ class AStar {
 
     private getAction(world: any, value: number): number {
         let startTime: number = new Date().getTime();
-        let openNodes: TreeNode[] = [new TreeNode(null, -1, world.clone())];
+        let openNodes: TreeNode[] = [new TreeNode(null, -1, world.clone(), this.parameters)];
         let bestNode: TreeNode = openNodes[0];
         let currentNumbers: number = 0;
         let solution: number[] = [];
         while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
+            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(dist.ppf(Math.random())) - b.getEvaluation(dist.ppf(Math.random())));
             let currentNode: TreeNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (let i: number = 0; i < currentNode.children.length; i++) {
@@ -203,19 +291,19 @@ class AStar {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
+                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
-                    if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
+                    if (bestNode.numChildren > 0 || node.getEvaluation(dist.ppf(Math.random())) > bestNode.getEvaluation(dist.ppf(Math.random()))) {
                         bestNode = node;
                     }
                     openNodes.push(node);
-                    currentNumbers += 1;
                 }
             }
+            currentNumbers += 1;
         }
         if (solution.length > 0) {
             return solution.splice(0, 1)[0];
@@ -226,7 +314,7 @@ class AStar {
 
     playGame(world:any, value:number):TreeNode{
         let spawnerFrames: number = 0;
-        let currentNode:TreeNode = new TreeNode(null, -1, world);
+        let currentNode:TreeNode = new TreeNode(null, -1, world, this.parameters);
         this.status = GameStatus.LOSE;
         let startGame:number = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()){
@@ -345,13 +433,11 @@ function calculateDensity(buckets:number[], bulletNumber:number):number{
     return getMaxBulletsBucket(buckets) / bulletNumber;
 }
 
-function calculateRisk(player:any, width:number, height:number, buckets:number[]):number{
+function calculateRisk(x:number, y:number, bucketsX:number, buckets:number[]):number{
     let result:number = 0;
-    let x:number = Math.floor(player.x / width);
-    let y:number = Math.floor(player.y / height);
     for(let dx:number=-1; dx<=1; dx++){
         for(let dy:number=-1; dy<=1; dy++){
-            let index:number = (y + dy) * width + (x + dx);
+            let index: number = (y + dy) * bucketsX + (x + dx);
             if(index >= buckets.length){
                 index = buckets.length - 1;
             }
@@ -375,40 +461,31 @@ function initializeBuckets(width:number, height:number):number[]{
 }
 
 function calculateBuckets(width:number, height:number, bucketX:number, bullets:any[], buckets:number[]):void{
-    let p:any = new Talakat.Point();
-    for(let b of bullets){
+    let s = new Talakat.Point();
+    let e = new Talakat.Point();
+    for (let b of bullets) {
         let indeces: number[] = [];
 
-        p.x = b.x - b.radius;
-        p.y = b.y - b.radius;
-        let index: number = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if(indeces.indexOf(index) == -1){
-            indeces.push(index);
-        }
-        p.x = b.x + b.radius;
-        p.y = b.y - b.radius;
-        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index) == -1) {
-            indeces.push(index);
-        }
-        p.x = b.x - b.radius;
-        p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index) == -1) {
-            indeces.push(index);
-        }
-        p.x = b.x + b.radius;
-        p.y = b.y + b.radius;
-        index = Math.floor(p.y / height) * bucketX + Math.floor(p.x / width);
-        if (indeces.indexOf(index) == -1) {
-            indeces.push(index);
+        s.x = Math.floor((b.x - b.radius) / width);
+        s.y = Math.floor((b.y - b.radius) / height);
+
+        e.x = Math.floor((b.x + b.radius) / width);
+        e.y = Math.floor((b.y + b.radius) / height);
+
+        for (let x: number = s.x; x <= e.x; x++) {
+            for (let y: number = s.y; y < e.y; y++) {
+                let index = y * bucketX + x;
+                if (indeces.indexOf(index) == -1) {
+                    indeces.push(index);
+                }
+            }
         }
 
-        for(let index of indeces){
-            if(index < 0){
+        for (let index of indeces) {
+            if (index < 0) {
                 index = 0;
             }
-            if(index >= buckets.length){
+            if (index >= buckets.length) {
                 index = buckets.length - 1;
             }
             buckets[index] += 1;
@@ -424,16 +501,16 @@ function getFitness(bossHealth:number):number{
     return (1 - bossHealth);
 }
 
-function evaluate(filePath:string, parameters:any, game:any){
-    let temp: any = evaluateOne(parameters, game);
+function evaluate(filePath:string, parameters:any, game:any, dist:any){
+    let temp: any = evaluateOne(parameters, game, dist);
     fs.writeFileSync("output/" + filePath, JSON.stringify(temp));
     fs.unlinkSync("input/" + filePath);
 }
 
-function evaluateOne(parameters:any, input:any){
+function evaluateOne(parameters:any, input:any, dist:any){
     let startWorld:any = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
-    let ai: AStar = new AStar(parameters);
+    let ai: AStar = new AStar(parameters, dist);
     ai.initialize();
     let bestNode: TreeNode = ai.playGame(startWorld.clone(), parameters.agentValue);
 
@@ -453,7 +530,8 @@ function evaluateOne(parameters:any, input:any){
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(currentNode.world.player, bucketWidth, bucketHeight, buckets);
+            risk += calculateRisk(Math.floor(currentNode.world.player.x/bucketWidth), 
+                Math.floor(currentNode.world.player.x / bucketHeight), parameters.bucketsX, buckets);
             distribution += calculateDistribution(buckets);
             density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
@@ -464,17 +542,17 @@ function evaluateOne(parameters:any, input:any){
 
     if (ai.status == GameStatus.ALOTSPAWNERS || 
             ai.status == GameStatus.SPAWNERSTOBULLETS || 
-            ai.status == GameStatus.TOOSLOW) {
+            ai.status == GameStatus.TOOSLOW || 
+            bulletFrames / Math.max(1, frames) < parameters.targetMaxBulletsFrame) {
         return {
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            constraints: getFitness(bestNode.world.boss.getHealth()),
+            constraints: bulletFrames / Math.max(1, frames) * getFitness(bestNode.world.boss.getHealth()),
             behavior: [
                 calculateBiEntropy(actionSequence), 
                 risk / Math.max(1, bulletFrames), 
                 distribution / Math.max(1, bulletFrames), 
-                bulletFrames / Math.max(1, frames)
             ]
         };
     }
@@ -488,13 +566,13 @@ function evaluateOne(parameters:any, input:any){
             calculateBiEntropy(actionSequence),
             risk / Math.max(1, bulletFrames),
             distribution / Math.max(1, bulletFrames),
-            bulletFrames / Math.max(1, frames)
         ]
     };
 }
 
 let tracery = require('./tracery.js');
 let fs = require('fs');
+let gaussian: any = require('gaussian');
 
 let parameters: any = JSON.parse(fs.readFileSync("assets/parameters.json"));
 let spawnerGrammar: any = JSON.parse(fs.readFileSync("assets/spawnerGrammar.json"));
@@ -512,6 +590,7 @@ function sleep(amount:number){
 
 let index: number = parseInt(process.argv[2]);
 let size: number = parseInt(process.argv[3]);
+let dist: any = gaussian(0, parameters.noiseStd);
 
 while(true){
     for(let i:number=0; i<size; i++){
@@ -519,7 +598,7 @@ while(true){
         if (fs.existsSync(filePath)) {
             sleep(1000);
             let game:any = JSON.parse(fs.readFileSync(filePath));
-            evaluate((index * size + i).toString() + ".json", parameters, game);
+            evaluate((index * size + i).toString() + ".json", parameters, game, dist);
         }
     }
     sleep(4000);

@@ -13,11 +13,11 @@ class OneStepLookAhead implements Agent {
 
     }
 
-    getAction(world: Talakat.World, value: number): number {
-        let rootNode: TreeNode = new TreeNode(null, -1, world.clone());
+    getAction(world: Talakat.World, value: number, parameters:any): number {
+        let rootNode: TreeNode = new TreeNode(null, -1, world.clone(), parameters);
         let bestNode: TreeNode = rootNode;
         for (let i: number = 0; i < rootNode.children.length; i++) {
-            let node: TreeNode = rootNode.addChild(i, this.repeatingAction);
+            let node: TreeNode = rootNode.addChild(i, this.repeatingAction, parameters);
             if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
                 bestNode = node;
             }

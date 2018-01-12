@@ -12,8 +12,6 @@ let newWorld:Talakat.World = null;
 let currentWorld:Talakat.World = null;
 let action:Talakat.Point = null;
 let agent:Agent = null;
-let planner:Planner = null;
-let plan:number[] = null;
 let interval:any = null;
 
 let numberOfCalls:number;
@@ -22,10 +20,16 @@ let totalDrawTime:number;
 
 let spawnerGrammar:any;
 let scriptGrammar:any;
+let parameters:any;
 
 function preload():void{
     spawnerGrammar = loadJSON("assets/spawnerGrammar.json");
-    scriptGrammar = loadJSON("assets/scriptGrammar.json");
+    scriptGrammar = loadJSON("assets/scriptGrammar.json", addSpawnerNames);
+    parameters = loadJSON("assets/parameters.json");
+    
+}
+
+function addSpawnerNames():void{
     for (let n of scriptGrammar.name) {
         spawnerGrammar.name.push(n);
     }
@@ -51,8 +55,6 @@ function startGame(input:string):void{
 }
 
 function stopGame():void{
-    planner = null;
-    plan = null;
     numberOfCalls = 0;
     totalUpdateTime = 0;
     totalDrawTime = 0;
@@ -70,37 +72,13 @@ function stopGame():void{
     }
 }
 
-function playPlanedGame(input:string):void{
-    stopGame();
-    let tempWorld = new Talakat.World(width, height);
-    let script:any = JSON.parse(input);
-    tempWorld.initialize(script);
-    planner = new AStarPlanner(4, 0);
-    planner.initalize(tempWorld);
-    interval = setInterval(updatePlan, 40);
-    debugLog("Planning....\n");
-}
-
 function playAIGame(input:string):void{
     stopGame();
     newWorld = new Talakat.World(width, height);
     let script:any = JSON.parse(input);
     newWorld.initialize(script);
-    agent = new AStar("time", 1);
+    agent = new AStar("time", parameters.repeatingAction);
     agent.initialize();
-}
-
-function updatePlan():void{
-    if(planner.isFinished()){
-        debugLog("Done.\n");
-        let temp:number[] = planner.getPlan();
-        clearInterval(interval);
-        interval = null;
-        startGame(document.getElementById("inputText").textContent);
-        plan = temp;
-        return;
-    }
-    planner.plan(100);
 }
 
 function updateGenerate():void{
@@ -166,13 +144,10 @@ function draw():void{
             action.y += 1;
         }
         if(agent != null){
-            action = ActionNumber.getAction(agent.getAction(currentWorld, 20));
-            currentWorld.update(action);
-            currentWorld.update(action);
-            currentWorld.update(action);
-        }
-        if(plan != null){
-            action = ActionNumber.getAction(plan.splice(0, 1)[0]);
+            action = ActionNumber.getAction(agent.getAction(currentWorld, 40, parameters));
+            for (let i: number = 0; i < parameters.repeatingAction-1; i++){
+                currentWorld.update(action);
+            }
         }
         currentWorld.update(action);
         totalUpdateTime += (new Date().getTime() - startTime);
