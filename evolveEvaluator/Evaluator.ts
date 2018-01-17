@@ -409,9 +409,16 @@ function getSequenceDerivative(sequence:number[]):number[]{
 
 function calculateBiEntropy(actionSequence:number[]):number{
     let entropy:number = calculateSequenceEntropy(actionSequence);
-    let der:number[] = getSequenceDerivative(actionSequence);
-    entropy += calculateSequenceEntropy(der);
-    return entropy / 2.0;
+    let der: number[] = [];
+    if(actionSequence.length > 1000){
+        der = getSequenceDerivative(actionSequence);
+        entropy += calculateSequenceEntropy(der.slice(1000));
+    }
+    if(actionSequence.length > 2000){
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(2000));
+    }
+    return entropy / 3.0;
 }
 
 function calculateDistribution(buckets: number[]):number{

@@ -376,9 +376,16 @@ function getSequenceDerivative(sequence) {
 }
 function calculateBiEntropy(actionSequence) {
     var entropy = calculateSequenceEntropy(actionSequence);
-    var der = getSequenceDerivative(actionSequence);
-    entropy += calculateSequenceEntropy(der);
-    return entropy / 2.0;
+    var der = [];
+    if (actionSequence.length > 1000) {
+        der = getSequenceDerivative(actionSequence);
+        entropy += calculateSequenceEntropy(der.slice(1000));
+    }
+    if (actionSequence.length > 2000) {
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(2000));
+    }
+    return entropy / 3.0;
 }
 function calculateDistribution(buckets) {
     var result = 0;
