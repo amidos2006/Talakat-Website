@@ -6,7 +6,7 @@
     "agent": "AStarPlanner",
     "agentType": "node",
     "agentValue": 200,
-    "maxStepTime": 5,
+    "maxStepTime": 10,
     "maxAgentTime": 50000,
     "targetMaxBulletsFrame": 0.5,
     "maxSpawnerFrames": 10,

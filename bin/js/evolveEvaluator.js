@@ -233,21 +233,23 @@ var TreeNode = (function () {
 //     }
 // }
 var AStar = (function () {
-    function AStar(parameters, dist) {
+    function AStar(parameters, noiseDist, repeatDist) {
         this.parameters = parameters;
-        this.dist = dist;
+        this.noiseDist = noiseDist;
+        this.repeatDist = repeatDist;
     }
     AStar.prototype.initialize = function () {
         this.status = GameStatus.NONE;
     };
     AStar.prototype.getAction = function (world, value) {
+        var _this = this;
         var startTime = new Date().getTime();
         var openNodes = [new TreeNode(null, -1, world.clone(), this.parameters)];
         var bestNode = openNodes[0];
         var currentNumbers = 0;
         var solution = [];
         while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort(function (a, b) { return a.getEvaluation(dist.ppf(Math.random())) - b.getEvaluation(dist.ppf(Math.random())); });
+            openNodes.sort(function (a, b) { return a.getEvaluation(_this.noiseDist.ppf(Math.random())) - b.getEvaluation(_this.noiseDist.ppf(Math.random())); });
             var currentNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (var i = 0; i < currentNode.children.length; i++) {
@@ -261,13 +263,13 @@ var AStar = (function () {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    var node = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters);
+                    var node = currentNode.addChild(i, 0, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
-                    if (bestNode.numChildren > 0 || node.getEvaluation(dist.ppf(Math.random())) > bestNode.getEvaluation(dist.ppf(Math.random()))) {
+                    if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
                         bestNode = node;
                     }
                     openNodes.push(node);
@@ -291,7 +293,10 @@ var AStar = (function () {
             var action = this.getAction(currentNode.world.clone(), value);
             var tempStartGame = new Date().getTime();
             // console.log("Make 10 Moves")
-            currentNode = currentNode.addChild(action, parameters.repeatingAction, parameters.maxNumSpawners);
+            var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
+            for (var i = 0; i < repeatValue; i++) {
+                currentNode = currentNode.addChild(action, 0, parameters.maxNumSpawners);
+            }
             if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
                 this.status = GameStatus.TOOSLOW;
                 currentNode.world.spawners.length = 0;
@@ -459,15 +464,15 @@ function getConstraints(loops, bullets, bossHealth) {
 function getFitness(bossHealth) {
     return (1 - bossHealth);
 }
-function evaluate(filePath, parameters, game, dist) {
-    var temp = evaluateOne(parameters, game, dist);
+function evaluate(filePath, parameters, game, noiseDist, repeatDist) {
+    var temp = evaluateOne(parameters, game, noiseDist, repeatDist);
     fs.writeFileSync("output/" + filePath, JSON.stringify(temp));
     fs.unlinkSync("input/" + filePath);
 }
-function evaluateOne(parameters, input, dist) {
+function evaluateOne(parameters, input, noiseDist, repeatDist) {
     var startWorld = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
-    var ai = new AStar(parameters, dist);
+    var ai = new AStar(parameters, noiseDist, repeatDist);
     ai.initialize();
     var bestNode = ai.playGame(startWorld.clone(), parameters.agentValue);
     var risk = 0;
@@ -541,14 +546,15 @@ function sleep(amount) {
 }
 var index = parseInt(process.argv[2]);
 var size = parseInt(process.argv[3]);
-var dist = gaussian(0, parameters.noiseStd);
+var noiseDist = gaussian(0, parameters.noiseStd);
+var repeatDist = gaussian(0, parameters.repeatingAction);
 while (true) {
     for (var i = 0; i < size; i++) {
         var filePath = "input/" + (index * size + i).toString() + ".json";
         if (fs.existsSync(filePath)) {
             sleep(1000);
             var game = JSON.parse(fs.readFileSync(filePath));
-            evaluate((index * size + i).toString() + ".json", parameters, game, dist);
+            evaluate((index * size + i).toString() + ".json", parameters, game, noiseDist, repeatDist);
         }
     }
     sleep(4000);

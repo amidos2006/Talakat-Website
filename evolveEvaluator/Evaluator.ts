@@ -259,11 +259,13 @@ class TreeNode {
 class AStar {
     parameters: any;
     status: GameStatus;
-    dist:any;
+    noiseDist:any;
+    repeatDist:any;
 
-    constructor(parameters:any, dist:any) {
+    constructor(parameters:any, noiseDist:any, repeatDist:any) {
         this.parameters = parameters;
-        this.dist = dist;
+        this.noiseDist = noiseDist;
+        this.repeatDist = repeatDist;
     }
 
     initialize() {
@@ -277,7 +279,7 @@ class AStar {
         let currentNumbers: number = 0;
         let solution: number[] = [];
         while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(dist.ppf(Math.random())) - b.getEvaluation(dist.ppf(Math.random())));
+            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(this.noiseDist.ppf(Math.random())) - b.getEvaluation(this.noiseDist.ppf(Math.random())));
             let currentNode: TreeNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (let i: number = 0; i < currentNode.children.length; i++) {
@@ -291,13 +293,13 @@ class AStar {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters);
+                    let node: TreeNode = currentNode.addChild(i, 0, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
-                    if (bestNode.numChildren > 0 || node.getEvaluation(dist.ppf(Math.random())) > bestNode.getEvaluation(dist.ppf(Math.random()))) {
+                    if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
                         bestNode = node;
                     }
                     openNodes.push(node);
@@ -322,7 +324,10 @@ class AStar {
             let action:number = this.getAction(currentNode.world.clone(), value);
             let tempStartGame: number = new Date().getTime();
             // console.log("Make 10 Moves")
-            currentNode = currentNode.addChild(action, parameters.repeatingAction, parameters.maxNumSpawners);
+            let repeatValue:number = Math.abs(this.repeatDist.ppf(Math.random()));
+            for(let i:number=0; i<repeatValue; i++){
+                currentNode = currentNode.addChild(action, 0, parameters.maxNumSpawners);
+            }
             if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
                 this.status = GameStatus.TOOSLOW;
                 currentNode.world.spawners.length = 0;
@@ -501,16 +506,16 @@ function getFitness(bossHealth:number):number{
     return (1 - bossHealth);
 }
 
-function evaluate(filePath:string, parameters:any, game:any, dist:any){
-    let temp: any = evaluateOne(parameters, game, dist);
+function evaluate(filePath:string, parameters:any, game:any, noiseDist:any, repeatDist:any){
+    let temp: any = evaluateOne(parameters, game, noiseDist, repeatDist);
     fs.writeFileSync("output/" + filePath, JSON.stringify(temp));
     fs.unlinkSync("input/" + filePath);
 }
 
-function evaluateOne(parameters:any, input:any, dist:any){
+function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
     let startWorld:any = new Talakat.World(parameters.width, parameters.height, parameters.maxNumBullets);
     startWorld.initialize(input);
-    let ai: AStar = new AStar(parameters, dist);
+    let ai: AStar = new AStar(parameters, noiseDist, repeatDist);
     ai.initialize();
     let bestNode: TreeNode = ai.playGame(startWorld.clone(), parameters.agentValue);
 
@@ -590,7 +595,8 @@ function sleep(amount:number){
 
 let index: number = parseInt(process.argv[2]);
 let size: number = parseInt(process.argv[3]);
-let dist: any = gaussian(0, parameters.noiseStd);
+let noiseDist: any = gaussian(0, parameters.noiseStd);
+let repeatDist: any = gaussian(0, parameters.repeatingAction);
 
 while(true){
     for(let i:number=0; i<size; i++){
@@ -598,7 +604,7 @@ while(true){
         if (fs.existsSync(filePath)) {
             sleep(1000);
             let game:any = JSON.parse(fs.readFileSync(filePath));
-            evaluate((index * size + i).toString() + ".json", parameters, game, dist);
+            evaluate((index * size + i).toString() + ".json", parameters, game, noiseDist, repeatDist);
         }
     }
     sleep(4000);
