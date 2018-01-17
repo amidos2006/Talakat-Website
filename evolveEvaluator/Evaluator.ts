@@ -379,17 +379,13 @@ function calculateEntropy(values:number[]):number{
     return result;
 }
 
-function calculateSequenceEntropy(sequence:number[]):number{
-    let dic:any = {};
-    for(let v of sequence){
-        if (!dic.hasOwnProperty(v.toString())){
-            dic[v.toString()] = 0;
-        }
-        dic[v.toString()] += 1;
+function calculateSequenceEntropy(sequence:number[], symbolNum:number):number{
+    let prob:number[] = [];
+    for(let i:number=0; i<symbolNum; i++){
+        prob.push(0);
     }
-    let prob: number[] = [];
-    for(let s in dic){
-        prob.push(dic[s]/sequence.length);
+    for(let v of sequence){
+        prob[v] += 1.0 / sequence.length;
     }
     return calculateEntropy(prob);
 }
@@ -408,15 +404,18 @@ function getSequenceDerivative(sequence:number[]):number[]{
 }
 
 function calculateBiEntropy(actionSequence:number[]):number{
-    let entropy:number = calculateSequenceEntropy(actionSequence);
+    let entropy:number = 0;
+    if(actionSequence.length > 0){
+        entropy += calculateSequenceEntropy(actionSequence, 5);
+    }
     let der: number[] = [];
     if(actionSequence.length > 1000){
         der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der.slice(1000));
+        entropy += calculateSequenceEntropy(der.slice(1000), 2);
     }
     if(actionSequence.length > 2000){
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(2000));
+        entropy += calculateSequenceEntropy(der.slice(2000), 2);
     }
     return entropy / 3.0;
 }

@@ -347,18 +347,14 @@ function calculateEntropy(values) {
     }
     return result;
 }
-function calculateSequenceEntropy(sequence) {
-    var dic = {};
+function calculateSequenceEntropy(sequence, symbolNum) {
+    var prob = [];
+    for (var i = 0; i < symbolNum; i++) {
+        prob.push(0);
+    }
     for (var _i = 0, sequence_1 = sequence; _i < sequence_1.length; _i++) {
         var v = sequence_1[_i];
-        if (!dic.hasOwnProperty(v.toString())) {
-            dic[v.toString()] = 0;
-        }
-        dic[v.toString()] += 1;
-    }
-    var prob = [];
-    for (var s in dic) {
-        prob.push(dic[s] / sequence.length);
+        prob[v] += 1.0 / sequence.length;
     }
     return calculateEntropy(prob);
 }
@@ -375,15 +371,18 @@ function getSequenceDerivative(sequence) {
     return der;
 }
 function calculateBiEntropy(actionSequence) {
-    var entropy = calculateSequenceEntropy(actionSequence);
+    var entropy = 0;
+    if (actionSequence.length > 0) {
+        entropy += calculateSequenceEntropy(actionSequence, 5);
+    }
     var der = [];
     if (actionSequence.length > 1000) {
         der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der.slice(1000));
+        entropy += calculateSequenceEntropy(der.slice(1000), 2);
     }
     if (actionSequence.length > 2000) {
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(2000));
+        entropy += calculateSequenceEntropy(der.slice(2000), 2);
     }
     return entropy / 3.0;
 }
