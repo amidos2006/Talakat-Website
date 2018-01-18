@@ -7,8 +7,8 @@ var GameStatus;
     GameStatus[GameStatus["NODEOUT"] = 3] = "NODEOUT";
     GameStatus[GameStatus["TIMEOUT"] = 4] = "TIMEOUT";
     GameStatus[GameStatus["TOOSLOW"] = 5] = "TOOSLOW";
-    GameStatus[GameStatus["SPAWNERSTOBULLETS"] = 6] = "SPAWNERSTOBULLETS";
-    GameStatus[GameStatus["ALOTSPAWNERS"] = 7] = "ALOTSPAWNERS";
+    GameStatus[GameStatus["ALOTSPAWNERS"] = 6] = "ALOTSPAWNERS";
+    GameStatus[GameStatus["LOWBULLETFRAMES"] = 7] = "LOWBULLETFRAMES";
 })(GameStatus || (GameStatus = {}));
 var ActionNumber = (function () {
     function ActionNumber() {
@@ -263,7 +263,7 @@ var AStar = (function () {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    var node = currentNode.addChild(i, 0, this.parameters);
+                    var node = currentNode.addChild(i, 1, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
@@ -294,25 +294,25 @@ var AStar = (function () {
             var tempStartGame = new Date().getTime();
             // console.log("Make 10 Moves")
             var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
-            for (var i = 0; i < repeatValue; i++) {
-                currentNode = currentNode.addChild(action, 0, parameters.maxNumSpawners);
+            for (var i = 0; i < Math.round(repeatValue) + 1; i++) {
+                currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
             }
             if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
                 this.status = GameStatus.TOOSLOW;
                 currentNode.world.spawners.length = 0;
                 return currentNode;
             }
-            if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-                spawnerFrames += 1;
-                if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-                    this.status = GameStatus.SPAWNERSTOBULLETS;
-                    currentNode.world.spawners.length = 0;
-                    return currentNode;
-                }
-            }
-            else {
-                spawnerFrames = 0;
-            }
+            // if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
+            //     spawnerFrames += 1;
+            //     if (spawnerFrames > this.parameters.maxSpawnerFrames) {
+            //         this.status = GameStatus.SPAWNERSTOBULLETS;
+            //         currentNode.world.spawners.length = 0;
+            //         return currentNode;
+            //     }
+            // }
+            // else {
+            //     spawnerFrames = 0;
+            // }
             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                 this.status = GameStatus.ALOTSPAWNERS;
                 currentNode.world.spawners.length = 0;
@@ -506,14 +506,16 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
         currentNode.children.length = 0;
     }
     if (ai.status == GameStatus.ALOTSPAWNERS ||
-        ai.status == GameStatus.SPAWNERSTOBULLETS ||
         ai.status == GameStatus.TOOSLOW ||
         bulletFrames / Math.max(1, frames) < parameters.targetMaxBulletsFrame) {
+        if (bulletFrames / Math.max(1, frames) < parameters.targetMaxBulletsFrame) {
+            ai.status = GameStatus.LOWBULLETFRAMES;
+        }
         return {
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            constraints: bulletFrames / Math.max(1, frames) * getFitness(bestNode.world.boss.getHealth()),
+            constraints: getFitness(bestNode.world.boss.getHealth()),
             behavior: [
                 calculateBiEntropy(actionSequence),
                 risk / Math.max(1, bulletFrames),
