@@ -22,11 +22,18 @@ let spawnerGrammar:any;
 let scriptGrammar:any;
 let parameters:any;
 
+let playerImg:any;
+let bossImg:any;
+
 function preload():void{
-    spawnerGrammar = loadJSON("assets/spawnerGrammar.json");
-    scriptGrammar = loadJSON("assets/scriptGrammar.json", addSpawnerNames);
+    spawnerGrammar = loadJSON("assets/spawnerGrammar.json", spawnersReady);
     parameters = loadJSON("assets/parameters.json");
-    
+    playerImg = loadImage("assets/player.png");
+    bossImg = loadImage("assets/boss.png");
+}
+
+function spawnersReady():void{
+    scriptGrammar = loadJSON("assets/scriptGrammar.json", addSpawnerNames);
 }
 
 function addSpawnerNames():void{
@@ -181,6 +188,9 @@ function worldDraw(world:Talakat.World):void{
         fill(color(255, 255, 255));
         ellipse(bullet.x, bullet.y, 1.75 * bullet.radius, 1.75 * bullet.radius);
     }
+    image(bossImg, world.boss.x - bossImg.width / 2, world.boss.y - bossImg.height / 2)
+    
+    image(playerImg, world.player.x-playerImg.width/2, world.player.y-playerImg.height/2)
     fill(color(255, 255, 255));
     ellipse(world.player.x, world.player.y, 2 * world.player.radius, 2 * world.player.radius);
 }
