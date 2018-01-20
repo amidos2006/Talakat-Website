@@ -30,7 +30,7 @@ class AStar implements Agent{
                     continue;
                 }
                 for(let i:number=0; i<currentNode.children.length; i++){
-                    let node:TreeNode = currentNode.addChild(i, this.repeatingAction, parameters);
+                    let node:TreeNode = currentNode.addChild(i, 10, parameters);
                     if(node.world.isWon()){
                         solution = node.getSequence();
                         break;

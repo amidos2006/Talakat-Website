@@ -3,12 +3,12 @@
     "height": 640,
 
     "maxDepth": 5,
-    "agent": "AStarPlanner",
+    "agent": "AStar",
     "agentType": "node",
-    "agentValue": 200,
-    "maxStepTime": 10,
-    "maxAgentTime": 120000,
-    "targetMaxBulletsFrame": 0.3,
+    "agentValue": 40,
+    "maxStepTime": 5,
+    "maxAgentTime": 600000,
+    "targetMaxBulletsFrame": 0.5,
     "maxSpawnerFrames": 10,
     "bulletsFrame": 10,
     "maxNumSpawners": 200,
@@ -21,8 +21,8 @@
     "saveFrames": "results/",
     "totalLevelsToTest": 1000,
 
-    "bucketsX": 20,
-    "bucketsY": 30,
+    "bucketsX": 10,
+    "bucketsY": 15,
 
     "sequenceSize": 23,
     "maxValue": 100,

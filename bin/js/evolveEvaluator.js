@@ -57,13 +57,20 @@ var TreeNode = (function () {
         this.children = [null, null, null, null, null];
         this.action = action;
         this.world = world;
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.safezone = Math.min(1, (parameters.maxNumBullets -
-            this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets)) / parameters.maxNumBullets);
-        this.futurezone = this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) / (parameters.bucketsX + parameters.bucketsY);
+        var tempWorld = world.clone();
+        this.safezone = 0.0;
+        for (var i = 0; i < 10; i++) {
+            tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
+            if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
+                break;
+            }
+            if (tempWorld.isWon()) {
+                this.safezone = 10.0;
+                break;
+            }
+            this.safezone += 1.0;
+        }
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -85,7 +92,7 @@ var TreeNode = (function () {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.75 * (1 - this.world.boss.getHealth()) + 0.05 * this.safezone - isLose + 0.2 * this.futurezone + noise;
+        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -117,7 +124,7 @@ var TreeNode = (function () {
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
             for (var x = s.x; x <= e.x; x++) {
-                for (var y = s.y; y < e.y; y++) {
+                for (var y = s.y; y <= e.y; y++) {
                     var index_1 = y * bucketX + x;
                     if (indeces.indexOf(index_1) == -1) {
                         indeces.push(index_1);
@@ -263,7 +270,7 @@ var AStar = (function () {
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
                         break;
                     }
-                    var node = currentNode.addChild(i, 1, this.parameters);
+                    var node = currentNode.addChild(i, 10, this.parameters);
                     // console.log("End One Action " + currentNode.world.spawners.length)
                     if (node.world.isWon()) {
                         solution = node.getSequence();
@@ -294,13 +301,21 @@ var AStar = (function () {
             var tempStartGame = new Date().getTime();
             // console.log("Make 10 Moves")
             var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
-            for (var i = 0; i < Math.round(repeatValue) + 1; i++) {
-                currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
+            if (repeatValue < 1) {
+                repeatValue = 1;
             }
-            if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                this.status = GameStatus.TOOSLOW;
-                currentNode.world.spawners.length = 0;
-                return currentNode;
+            for (var i = 0; i < repeatValue; i++) {
+                currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
+                if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
+                    this.status = GameStatus.TOOSLOW;
+                    currentNode.world.spawners.length = 0;
+                    return currentNode;
+                }
+                if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+                    this.status = GameStatus.ALOTSPAWNERS;
+                    currentNode.world.spawners.length = 0;
+                    return currentNode;
+                }
             }
             // if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
             //     spawnerFrames += 1;
@@ -313,11 +328,6 @@ var AStar = (function () {
             // else {
             //     spawnerFrames = 0;
             // }
-            if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                this.status = GameStatus.ALOTSPAWNERS;
-                currentNode.world.spawners.length = 0;
-                return currentNode;
-            }
             if (new Date().getTime() - startGame > this.parameters.maxAgentTime) {
                 this.status = GameStatus.TIMEOUT;
                 currentNode.world.spawners.length = 0;
@@ -445,7 +455,7 @@ function calculateBuckets(width, height, bucketX, bullets, buckets) {
         e.x = Math.floor((b.x + b.radius) / width);
         e.y = Math.floor((b.y + b.radius) / height);
         for (var x = s.x; x <= e.x; x++) {
-            for (var y = s.y; y < e.y; y++) {
+            for (var y = s.y; y <= e.y; y++) {
                 var index_5 = y * bucketX + x;
                 if (indeces.indexOf(index_5) == -1) {
                     indeces.push(index_5);
@@ -497,7 +507,7 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.x / bucketHeight), parameters.bucketsX, buckets);
+            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, buckets);
             distribution += calculateDistribution(buckets);
             density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
@@ -518,8 +528,8 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
             constraints: getFitness(bestNode.world.boss.getHealth()),
             behavior: [
                 calculateBiEntropy(actionSequence),
-                risk / Math.max(1, bulletFrames),
-                distribution / Math.max(1, bulletFrames),
+                risk / Math.max(1, frames),
+                distribution / Math.max(1, frames),
             ]
         };
     }
@@ -537,7 +547,7 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
 }
 var tracery = require('./tracery.js');
 var fs = require('fs');
-var gaussian = require('gaussian');
+var gaussian = require('./gaussian.js');
 var parameters = JSON.parse(fs.readFileSync("assets/parameters.json"));
 var spawnerGrammar = JSON.parse(fs.readFileSync("assets/spawnerGrammar.json"));
 var scriptGrammar = JSON.parse(fs.readFileSync("assets/scriptGrammar.json"));
@@ -554,8 +564,8 @@ function sleep(amount) {
 }
 var index = parseInt(process.argv[2]);
 var size = parseInt(process.argv[3]);
-var noiseDist = gaussian(0, parameters.noiseStd);
-var repeatDist = gaussian(0, parameters.repeatingAction);
+var noiseDist = gaussian(0, Math.pow(parameters.noiseStd, 2));
+var repeatDist = gaussian(0, Math.pow(parameters.repeatingAction, 2));
 while (true) {
     for (var i = 0; i < size; i++) {
         var filePath = "input/" + (index * size + i).toString() + ".json";

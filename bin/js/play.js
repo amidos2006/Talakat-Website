@@ -231,13 +231,20 @@ var TreeNode = (function () {
         this.children = [null, null, null, null, null];
         this.action = action;
         this.world = world;
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.safezone = Math.min(1, (parameters.maxNumBullets -
-            this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets)) / parameters.maxNumBullets);
-        this.futurezone = this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) / (parameters.bucketsX + parameters.bucketsY);
+        var tempWorld = world.clone();
+        this.safezone = 0;
+        for (var i = 0; i < 10; i++) {
+            tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
+            if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
+                break;
+            }
+            if (tempWorld.isWon()) {
+                this.safezone = 10.0;
+                break;
+            }
+            this.safezone += 1.0;
+        }
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -256,7 +263,7 @@ var TreeNode = (function () {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.85 * (1 - this.world.boss.getHealth()) + 0.1 * this.futurezone + 0.05 * this.safezone - isLose;
+        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -351,6 +358,7 @@ var AStar = (function () {
         var startTime = new Date().getTime();
         var openNodes = [new TreeNode(null, -1, world.clone(), parameters)];
         var bestNode = openNodes[0];
+        console.log(bestNode.getEvaluation());
         var currentNumbers = 0;
         var solution = [];
         while (openNodes.length > 0 && solution.length == 0) {
@@ -364,12 +372,13 @@ var AStar = (function () {
                     continue;
                 }
                 for (var i = 0; i < currentNode.children.length; i++) {
-                    var node = currentNode.addChild(i, this.repeatingAction, parameters);
+                    var node = currentNode.addChild(i, 10, parameters);
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
                     if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
+                        console.log(bestNode.getEvaluation());
                         bestNode = node;
                     }
                     openNodes.push(node);

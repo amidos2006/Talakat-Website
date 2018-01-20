@@ -52,17 +52,20 @@ class TreeNode{
         this.children = [null, null, null, null, null];
         this.action = action;
         this.world = world;
-        let bucketWidth: number = parameters.width / parameters.bucketsX;
-        let bucketHeight: number = parameters.height / parameters.bucketsY;
-        let buckets:number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.safezone = Math.min(1, (parameters.maxNumBullets - 
-            this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), 
-            Math.floor(world.player.y / bucketHeight), 
-            parameters.bucketsX, buckets)) / parameters.maxNumBullets);
-        this.futurezone = this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth),
-            Math.floor(world.player.y / bucketHeight),
-            parameters.bucketsX, buckets)/(parameters.bucketsX + parameters.bucketsY);
+        let tempWorld: any = world.clone();
+        this.safezone = 0;
+        for (let i: number = 0; i < 10; i++) {
+            tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
+            if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
+                break;
+            }
+            if(tempWorld.isWon()){
+                this.safezone = 10.0;
+                break;
+            }
+            this.safezone += 1.0;
+        }
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
 
@@ -81,7 +84,7 @@ class TreeNode{
         if(this.world.isLose()){
             isLose = 1;
         }
-        return 0.85 * (1 - this.world.boss.getHealth()) + 0.1 * this.futurezone + 0.05 * this.safezone - isLose;
+        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
     }
 
     getSequence(macroAction:number=1):number[]{
