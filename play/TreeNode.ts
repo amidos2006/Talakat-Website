@@ -44,6 +44,7 @@ class TreeNode{
     action:number;
     world:Talakat.World;
     safezone:number;
+    closest:number;
     futurezone:number;
     numChildren:number;
 
@@ -54,18 +55,26 @@ class TreeNode{
         this.world = world;
         let tempWorld: any = world.clone();
         this.safezone = 0;
-        for (let i: number = 0; i < 10; i++) {
+        for (let i: number = 0; i < 20; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
             if(tempWorld.isWon()){
-                this.safezone = 10.0;
+                this.safezone = 12.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 12.0;
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.futurezone = (parameters.bucketsX + parameters.bucketsY) / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth),
+            Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
+        this.closest = this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth),
+            Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
         this.numChildren = 0;
     }
 
@@ -84,7 +93,7 @@ class TreeNode{
         if(this.world.isLose()){
             isLose = 1;
         }
-        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
+        return 0.65 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.1 * this.futurezone + 0.05 * noise;
     }
 
     getSequence(macroAction:number=1):number[]{
@@ -142,18 +151,38 @@ class TreeNode{
 
     private calculateSurroundingBullets(x:number, y:number, bucketX:number, buckets:number[]):number{
         let result:number = 0;
-        for(let dx:number=-1; dx<=1; dx++){
-            for(let dy:number=-1; dy<=1; dy++){
-                let index: number = (y + dy) * bucketX + (x + dx);
-                if (index >= buckets.length) {
-                    index = buckets.length - 1;
-                }
-                if (index < 0) {
-                    index = 0;
-                }
+        let visited:any = {};
+        let nodes:any[] = [{x:x, y:y}];
+        while(nodes.length > 0){
+            let currentNode:any = nodes.splice(0, 1)[0];
+            let index:number = currentNode.y * bucketX + currentNode.x;
+            if (index >= buckets.length) {
+                index = buckets.length - 1;
+            }
+            if (index < 0) {
+                index = 0;
+            }
+            let dist:number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+            if (!visited.hasOwnProperty(index) && dist < 2){
+                visited[index] = true;
                 result += buckets[index];
+                for (let dx: number = -1; dx <= 1; dx++) {
+                    for (let dy: number = -1; dy <= 1; dy++) {
+                        if(dx == 0 && dy == 0){
+                            continue;
+                        }
+                        let index: number = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                        if (index >= buckets.length) {
+                            index = buckets.length - 1;
+                        }
+                        if (index < 0) {
+                            index = 0;
+                        }
+                    }
+                }
             }
         }
+        
         return result;
     }
 
@@ -170,5 +199,17 @@ class TreeNode{
             }
         }
         return Math.abs(px - bestX) + Math.abs(py-bestY);
+    }
+
+    private getClosetBullet(px:number, py:number, bucketX:number, bucketsY:number, buckets:number[]):number{
+        let closest:number = bucketX + bucketsY;
+        for (let i: number = 0; i < buckets.length; i++) {
+            let x: number = i % bucketX;
+            let y: number = Math.floor(i / bucketX);
+            if (buckets[i] > 0 && Math.abs(px - x) + Math.abs(py - y) < closest){
+                closest = Math.abs(px - x) + Math.abs(py - y);
+            }
+        }
+        return closest;
     }
 }

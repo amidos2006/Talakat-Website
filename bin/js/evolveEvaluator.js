@@ -59,26 +59,35 @@ var TreeNode = (function () {
         this.world = world;
         var tempWorld = world.clone();
         this.safezone = 0.0;
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 20; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
             if (tempWorld.isWon()) {
-                this.safezone = 10.0;
+                this.safezone = 20.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 20.0;
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.futurezone = 1.0 / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
         if (macroAction === void 0) { macroAction = 1; }
         var newWorld = this.world.clone();
+        var startTime = new Date().getTime();
         for (var i = 0; i < macroAction; i++) {
             newWorld.update(ActionNumber.getAction(action));
             if (newWorld.spawners.length > parameters.maxNumSpawners) {
+                break;
+            }
+            if (new Date().getTime() - startTime > parameters.maxStepTime) {
                 break;
             }
         }
@@ -92,7 +101,7 @@ var TreeNode = (function () {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
+        return 0.55 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.25 * (0.75 * this.futurezone + 0.25 * noise);
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -145,16 +154,35 @@ var TreeNode = (function () {
     };
     TreeNode.prototype.calculateSurroundingBullets = function (x, y, bucketX, buckets) {
         var result = 0;
-        for (var dx = -1; dx <= 1; dx++) {
-            for (var dy = -1; dy <= 1; dy++) {
-                var index_3 = (y + dy) * bucketX + (x + dx);
-                if (index_3 >= buckets.length) {
-                    index_3 = buckets.length - 1;
-                }
-                if (index_3 < 0) {
-                    index_3 = 0;
-                }
+        var visited = {};
+        var nodes = [{ x: x, y: y }];
+        while (nodes.length > 0) {
+            var currentNode = nodes.splice(0, 1)[0];
+            var index_3 = currentNode.y * bucketX + currentNode.x;
+            if (index_3 >= buckets.length) {
+                index_3 = buckets.length - 1;
+            }
+            if (index_3 < 0) {
+                index_3 = 0;
+            }
+            var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+            if (!visited.hasOwnProperty(index_3) && dist < 3) {
+                visited[index_3] = true;
                 result += buckets[index_3];
+                for (var dx = -1; dx <= 1; dx++) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        if (dx == 0 && dy == 0) {
+                            continue;
+                        }
+                        var index_4 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                        if (index_4 >= buckets.length) {
+                            index_4 = buckets.length - 1;
+                        }
+                        if (index_4 < 0) {
+                            index_4 = 0;
+                        }
+                    }
+                }
             }
         }
         return result;
@@ -261,31 +289,32 @@ var AStar = (function () {
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (var i = 0; i < currentNode.children.length; i++) {
                     // console.log("Start One Action")
+                    var node = currentNode.addChild(i, 20, this.parameters);
+                    // console.log("End One Action " + currentNode.world.spawners.length)
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                        openNodes.length = 0;
                         break;
                     }
                     if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                        openNodes.length = 0;
                         break;
                     }
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                        break;
-                    }
-                    var node = currentNode.addChild(i, 10, this.parameters);
-                    // console.log("End One Action " + currentNode.world.spawners.length)
-                    if (node.world.isWon()) {
-                        solution = node.getSequence();
+                        openNodes.length = 0;
                         break;
                     }
                     if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
                         bestNode = node;
                     }
+                    if (node.world.isWon()) {
+                        openNodes.length = 0;
+                        bestNode = node;
+                        break;
+                    }
                     openNodes.push(node);
                 }
             }
             currentNumbers += 1;
-        }
-        if (solution.length > 0) {
-            return solution.splice(0, 1)[0];
         }
         var action = bestNode.getSequence().splice(0, 1)[0];
         return action;
@@ -298,12 +327,12 @@ var AStar = (function () {
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
             // console.log("Get Action")
             var action = this.getAction(currentNode.world.clone(), value);
-            var tempStartGame = new Date().getTime();
             // console.log("Make 10 Moves")
             var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1) {
                 repeatValue = 1;
             }
+            var tempStartGame = new Date().getTime();
             for (var i = 0; i < repeatValue; i++) {
                 currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
                 if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
@@ -382,17 +411,18 @@ function getSequenceDerivative(sequence) {
 }
 function calculateBiEntropy(actionSequence) {
     var entropy = 0;
-    if (actionSequence.length > 0) {
-        entropy += calculateSequenceEntropy(actionSequence, 5);
-    }
     var der = [];
-    if (actionSequence.length > 1000) {
+    if (actionSequence.length > 0) {
         der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der.slice(1000), 2);
+        entropy += calculateSequenceEntropy(der, 2);
     }
-    if (actionSequence.length > 2000) {
+    if (actionSequence.length > 750) {
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(2000), 2);
+        entropy += calculateSequenceEntropy(der.slice(750), 2);
+    }
+    if (actionSequence.length > 1500) {
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(1500), 2);
     }
     return entropy / 3.0;
 }
@@ -423,14 +453,14 @@ function calculateRisk(x, y, bucketsX, buckets) {
     var result = 0;
     for (var dx = -1; dx <= 1; dx++) {
         for (var dy = -1; dy <= 1; dy++) {
-            var index_4 = (y + dy) * bucketsX + (x + dx);
-            if (index_4 >= buckets.length) {
-                index_4 = buckets.length - 1;
+            var index_5 = (y + dy) * bucketsX + (x + dx);
+            if (index_5 >= buckets.length) {
+                index_5 = buckets.length - 1;
             }
-            if (index_4 < 0) {
-                index_4 = 0;
+            if (index_5 < 0) {
+                index_5 = 0;
             }
-            if (buckets[index_4] > 0) {
+            if (buckets[index_5] > 0) {
                 result += 1.0;
             }
         }
@@ -456,21 +486,21 @@ function calculateBuckets(width, height, bucketX, bullets, buckets) {
         e.y = Math.floor((b.y + b.radius) / height);
         for (var x = s.x; x <= e.x; x++) {
             for (var y = s.y; y <= e.y; y++) {
-                var index_5 = y * bucketX + x;
-                if (indeces.indexOf(index_5) == -1) {
-                    indeces.push(index_5);
+                var index_6 = y * bucketX + x;
+                if (indeces.indexOf(index_6) == -1) {
+                    indeces.push(index_6);
                 }
             }
         }
         for (var _a = 0, indeces_2 = indeces; _a < indeces_2.length; _a++) {
-            var index_6 = indeces_2[_a];
-            if (index_6 < 0) {
-                index_6 = 0;
+            var index_7 = indeces_2[_a];
+            if (index_7 < 0) {
+                index_7 = 0;
             }
-            if (index_6 >= buckets.length) {
-                index_6 = buckets.length - 1;
+            if (index_7 >= buckets.length) {
+                index_7 = buckets.length - 1;
             }
-            buckets[index_6] += 1;
+            buckets[index_7] += 1;
         }
     }
 }
@@ -500,7 +530,7 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
     var bucketWidth = parameters.width / parameters.bucketsX;
     var bucketHeight = parameters.height / parameters.bucketsY;
     var buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-    var actionSequence = bestNode.getSequence(parameters.repeatingAction);
+    var actionSequence = bestNode.getSequence(1);
     var currentNode = bestNode;
     while (currentNode.parent != null) {
         if (currentNode.world.bullets.length > parameters.bulletsFrame) {

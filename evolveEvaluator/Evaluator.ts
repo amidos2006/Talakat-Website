@@ -67,26 +67,36 @@ class TreeNode {
         this.world = world;
         let tempWorld:any = world.clone();
         this.safezone = 0.0;
-        for(let i:number=0; i<10; i++){
+        for(let i:number=0; i<20; i++){
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
             if(tempWorld.isWon()){
-                this.safezone = 10.0;
+                this.safezone = 20.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 20.0;
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.futurezone = 1.0 / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth),
+            Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
         this.numChildren = 0;
     }
 
     addChild(action: number, macroAction: number = 1, parameters:any): TreeNode {
         let newWorld: any = this.world.clone();
+        let startTime:number = new Date().getTime();
         for (let i: number = 0; i < macroAction; i++) {
             newWorld.update(ActionNumber.getAction(action));
             if (newWorld.spawners.length > parameters.maxNumSpawners){
+                break;
+            }
+            if(new Date().getTime() - startTime > parameters.maxStepTime){
                 break;
             }
         }
@@ -100,7 +110,7 @@ class TreeNode {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
+        return 0.55 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.25 * (0.75 * this.futurezone + 0.25 * noise);
     }
 
     getSequence(macroAction: number = 1): number[] {
@@ -158,18 +168,38 @@ class TreeNode {
 
     private calculateSurroundingBullets(x: number, y: number, bucketX: number, buckets: number[]): number {
         let result: number = 0;
-        for (let dx: number = -1; dx <= 1; dx++) {
-            for (let dy: number = -1; dy <= 1; dy++) {
-                let index: number = (y + dy) * bucketX + (x + dx);
-                if (index >= buckets.length) {
-                    index = buckets.length - 1;
-                }
-                if (index < 0) {
-                    index = 0;
-                }
+        let visited: any = {};
+        let nodes: any[] = [{ x: x, y: y }];
+        while (nodes.length > 0) {
+            let currentNode: any = nodes.splice(0, 1)[0];
+            let index: number = currentNode.y * bucketX + currentNode.x;
+            if (index >= buckets.length) {
+                index = buckets.length - 1;
+            }
+            if (index < 0) {
+                index = 0;
+            }
+            let dist: number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+            if (!visited.hasOwnProperty(index) && dist < 3) {
+                visited[index] = true;
                 result += buckets[index];
+                for (let dx: number = -1; dx <= 1; dx++) {
+                    for (let dy: number = -1; dy <= 1; dy++) {
+                        if (dx == 0 && dy == 0) {
+                            continue;
+                        }
+                        let index: number = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                        if (index >= buckets.length) {
+                            index = buckets.length - 1;
+                        }
+                        if (index < 0) {
+                            index = 0;
+                        }
+                    }
+                }
             }
         }
+
         return result;
     }
 
@@ -287,31 +317,32 @@ class AStar {
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (let i: number = 0; i < currentNode.children.length; i++) {
                     // console.log("Start One Action")
+                    let node: TreeNode = currentNode.addChild(i, 20, this.parameters);
+                    // console.log("End One Action " + currentNode.world.spawners.length)
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                        openNodes.length = 0;
                         break;
                     }
                     if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                        openNodes.length = 0;
                         break;
                     }
                     if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                        break;
-                    }
-                    let node: TreeNode = currentNode.addChild(i, 10, this.parameters);
-                    // console.log("End One Action " + currentNode.world.spawners.length)
-                    if (node.world.isWon()) {
-                        solution = node.getSequence();
+                        openNodes.length = 0;
                         break;
                     }
                     if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
                         bestNode = node;
                     }
+                    if (node.world.isWon()) {
+                        openNodes.length = 0;
+                        bestNode = node;
+                        break;
+                    }
                     openNodes.push(node);
                 }
             }
             currentNumbers += 1;
-        }
-        if (solution.length > 0) {
-            return solution.splice(0, 1)[0];
         }
         let action: number = bestNode.getSequence().splice(0, 1)[0];
         return action;
@@ -325,12 +356,12 @@ class AStar {
         while (!currentNode.world.isWon() && !currentNode.world.isLose()){
             // console.log("Get Action")
             let action:number = this.getAction(currentNode.world.clone(), value);
-            let tempStartGame: number = new Date().getTime();
             // console.log("Make 10 Moves")
             let repeatValue:number = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1){
                 repeatValue = 1;
             }
+            let tempStartGame: number = new Date().getTime();
             for(let i:number=0; i<repeatValue; i++){
                 currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
                 if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
@@ -412,17 +443,19 @@ function getSequenceDerivative(sequence:number[]):number[]{
 
 function calculateBiEntropy(actionSequence:number[]):number{
     let entropy:number = 0;
-    if(actionSequence.length > 0){
-        entropy += calculateSequenceEntropy(actionSequence, 5);
-    }
     let der: number[] = [];
-    if(actionSequence.length > 1000){
+    if(actionSequence.length > 0){
         der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der.slice(1000), 2);
+        entropy += calculateSequenceEntropy(der, 2);
     }
-    if(actionSequence.length > 2000){
+    
+    if(actionSequence.length > 750){
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(2000), 2);
+        entropy += calculateSequenceEntropy(der.slice(750), 2);
+    }
+    if(actionSequence.length > 1500){
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(1500), 2);
     }
     return entropy / 3.0;
 }
@@ -541,7 +574,7 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
     let bucketWidth: number = parameters.width / parameters.bucketsX;
     let bucketHeight: number = parameters.height / parameters.bucketsY;
     let buckets: number[] = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-    let actionSequence: number[] = bestNode.getSequence(parameters.repeatingAction);
+    let actionSequence: number[] = bestNode.getSequence(1);
     let currentNode:TreeNode = bestNode;
     while (currentNode.parent != null){
         if(currentNode.world.bullets.length > parameters.bulletsFrame){

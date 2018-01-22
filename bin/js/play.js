@@ -233,18 +233,24 @@ var TreeNode = (function () {
         this.world = world;
         var tempWorld = world.clone();
         this.safezone = 0;
-        for (var i = 0; i < 10; i++) {
+        for (var i = 0; i < 20; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
             if (tempWorld.isWon()) {
-                this.safezone = 10.0;
+                this.safezone = 12.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 12.0;
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.futurezone = (parameters.bucketsX + parameters.bucketsY) / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
+        this.closest = this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -263,7 +269,7 @@ var TreeNode = (function () {
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.75 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.05 * noise;
+        return 0.65 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.1 * this.futurezone + 0.05 * noise;
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -316,16 +322,35 @@ var TreeNode = (function () {
     };
     TreeNode.prototype.calculateSurroundingBullets = function (x, y, bucketX, buckets) {
         var result = 0;
-        for (var dx = -1; dx <= 1; dx++) {
-            for (var dy = -1; dy <= 1; dy++) {
-                var index = (y + dy) * bucketX + (x + dx);
-                if (index >= buckets.length) {
-                    index = buckets.length - 1;
-                }
-                if (index < 0) {
-                    index = 0;
-                }
+        var visited = {};
+        var nodes = [{ x: x, y: y }];
+        while (nodes.length > 0) {
+            var currentNode = nodes.splice(0, 1)[0];
+            var index = currentNode.y * bucketX + currentNode.x;
+            if (index >= buckets.length) {
+                index = buckets.length - 1;
+            }
+            if (index < 0) {
+                index = 0;
+            }
+            var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+            if (!visited.hasOwnProperty(index) && dist < 2) {
+                visited[index] = true;
                 result += buckets[index];
+                for (var dx = -1; dx <= 1; dx++) {
+                    for (var dy = -1; dy <= 1; dy++) {
+                        if (dx == 0 && dy == 0) {
+                            continue;
+                        }
+                        var index_1 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                        if (index_1 >= buckets.length) {
+                            index_1 = buckets.length - 1;
+                        }
+                        if (index_1 < 0) {
+                            index_1 = 0;
+                        }
+                    }
+                }
             }
         }
         return result;
@@ -344,6 +369,17 @@ var TreeNode = (function () {
         }
         return Math.abs(px - bestX) + Math.abs(py - bestY);
     };
+    TreeNode.prototype.getClosetBullet = function (px, py, bucketX, bucketsY, buckets) {
+        var closest = bucketX + bucketsY;
+        for (var i = 0; i < buckets.length; i++) {
+            var x = i % bucketX;
+            var y = Math.floor(i / bucketX);
+            if (buckets[i] > 0 && Math.abs(px - x) + Math.abs(py - y) < closest) {
+                closest = Math.abs(px - x) + Math.abs(py - y);
+            }
+        }
+        return closest;
+    };
     return TreeNode;
 }());
 /// <reference path="TreeNode.ts"/>
@@ -358,7 +394,6 @@ var AStar = (function () {
         var startTime = new Date().getTime();
         var openNodes = [new TreeNode(null, -1, world.clone(), parameters)];
         var bestNode = openNodes[0];
-        console.log(bestNode.getEvaluation());
         var currentNumbers = 0;
         var solution = [];
         while (openNodes.length > 0 && solution.length == 0) {
@@ -372,13 +407,12 @@ var AStar = (function () {
                     continue;
                 }
                 for (var i = 0; i < currentNode.children.length; i++) {
-                    var node = currentNode.addChild(i, 10, parameters);
+                    var node = currentNode.addChild(i, 20, parameters);
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
                     if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
-                        console.log(bestNode.getEvaluation());
                         bestNode = node;
                     }
                     openNodes.push(node);

@@ -21,8 +21,8 @@
     "saveFrames": "results/",
     "totalLevelsToTest": 1000,
 
-    "bucketsX": 10,
-    "bucketsY": 15,
+    "bucketsX": 8,
+    "bucketsY": 12,
 
     "sequenceSize": 23,
     "maxValue": 100,
