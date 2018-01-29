@@ -9,7 +9,6 @@
 		"Play.ts",
 		"Agent.ts",
 		"AStar.ts",
-		"OneStepLookAhead.ts",
 		"TreeNode.ts",
 		"../definitions/*"
 	]

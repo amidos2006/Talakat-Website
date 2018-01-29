@@ -56,7 +56,7 @@ function setup():void{
 
 function startGame(input:string):void{
     stopGame();
-    newWorld = new Talakat.World(width, height);
+    newWorld = new Talakat.World(width, height, parameters.maxNumBullets);
     let script:any = JSON.parse(input);
     newWorld.initialize(script);
 }
@@ -152,9 +152,9 @@ function draw():void{
         }
         if(agent != null){
             action = ActionNumber.getAction(agent.getAction(currentWorld, 40, parameters));
-            for (let i: number = 0; i < parameters.repeatingAction-1; i++){
-                currentWorld.update(action);
-            }
+            // for (let i: number = 0; i < parameters.repeatingAction-1; i++){
+            //     currentWorld.update(action);
+            // }
         }
         currentWorld.update(action);
         totalUpdateTime += (new Date().getTime() - startTime);
@@ -189,7 +189,7 @@ function worldDraw(world:Talakat.World):void{
         ellipse(bullet.x, bullet.y, 1.75 * bullet.radius, 1.75 * bullet.radius);
     }
     image(bossImg, world.boss.x - bossImg.width / 2, world.boss.y - bossImg.height / 2)
-    
+
     image(playerImg, world.player.x-playerImg.width/2, world.player.y-playerImg.height/2)
     fill(color(255, 255, 255));
     ellipse(world.player.x, world.player.y, 2 * world.player.radius, 2 * world.player.radius);

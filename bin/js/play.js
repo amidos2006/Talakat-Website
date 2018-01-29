@@ -48,7 +48,7 @@ function setup() {
 }
 function startGame(input) {
     stopGame();
-    newWorld = new Talakat.World(width, height);
+    newWorld = new Talakat.World(width, height, parameters.maxNumBullets);
     var script = JSON.parse(input);
     newWorld.initialize(script);
 }
@@ -136,9 +136,9 @@ function draw() {
         }
         if (agent != null) {
             action = ActionNumber.getAction(agent.getAction(currentWorld, 40, parameters));
-            for (var i = 0; i < parameters.repeatingAction - 1; i++) {
-                currentWorld.update(action);
-            }
+            // for (let i: number = 0; i < parameters.repeatingAction-1; i++){
+            //     currentWorld.update(action);
+            // }
         }
         currentWorld.update(action);
         totalUpdateTime += (new Date().getTime() - startTime);
@@ -233,24 +233,18 @@ var TreeNode = (function () {
         this.world = world;
         var tempWorld = world.clone();
         this.safezone = 0;
-        for (var i = 0; i < 20; i++) {
+        for (var i = 0; i < 10; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 break;
             }
             if (tempWorld.isWon()) {
-                this.safezone = 12.0;
+                this.safezone = 10.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 12.0;
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.futurezone = (parameters.bucketsX + parameters.bucketsY) / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
-        this.closest = this.calculateSurroundingBullets(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -263,13 +257,20 @@ var TreeNode = (function () {
         this.numChildren += 1;
         return this.children[action];
     };
-    TreeNode.prototype.getEvaluation = function (noise) {
+    TreeNode.prototype.getEvaluation = function (target, noise) {
         if (noise === void 0) { noise = 0; }
         var isLose = 0;
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.65 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.1 * this.futurezone + 0.05 * noise;
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var p = {
+            x: Math.floor(this.world.player.x / bucketWidth),
+            y: Math.floor(this.world.player.y / bucketHeight)
+        };
+        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone +
+            -0.1 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -283,14 +284,24 @@ var TreeNode = (function () {
         }
         return result.reverse();
     };
-    TreeNode.prototype.initializeBuckets = function (width, height) {
+    return TreeNode;
+}());
+/// <reference path="TreeNode.ts"/>
+var AStar = (function () {
+    function AStar(type, repeatingAction) {
+        this.type = type;
+        this.repeatingAction = repeatingAction;
+    }
+    AStar.prototype.initialize = function () {
+    };
+    AStar.prototype.initializeBuckets = function (width, height) {
         var buckets = [];
         for (var i = 0; i < width * height; i++) {
             buckets.push(0);
         }
         return buckets;
     };
-    TreeNode.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
+    AStar.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
         var s = new Talakat.Point();
         var e = new Talakat.Point();
         for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
@@ -320,7 +331,7 @@ var TreeNode = (function () {
             }
         }
     };
-    TreeNode.prototype.calculateSurroundingBullets = function (x, y, bucketX, buckets) {
+    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, riskDistance, buckets) {
         var result = 0;
         var visited = {};
         var nodes = [{ x: x, y: y }];
@@ -334,9 +345,9 @@ var TreeNode = (function () {
                 index = 0;
             }
             var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
-            if (!visited.hasOwnProperty(index) && dist < 2) {
+            if (!visited.hasOwnProperty(index) && dist <= riskDistance) {
                 visited[index] = true;
-                result += buckets[index];
+                result += buckets[index] / (dist + 1);
                 for (var dx = -1; dx <= 1; dx++) {
                     for (var dy = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) {
@@ -355,64 +366,50 @@ var TreeNode = (function () {
         }
         return result;
     };
-    TreeNode.prototype.distanceSafeBucket = function (px, py, bucketX, buckets) {
+    AStar.prototype.getSafestBucket = function (px, py, bucketX, buckets) {
         var bestX = px;
         var bestY = py;
         for (var i = 0; i < buckets.length; i++) {
             var x = i % bucketX;
             var y = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
                 bestX = x;
                 bestY = y;
             }
         }
-        return Math.abs(px - bestX) + Math.abs(py - bestY);
-    };
-    TreeNode.prototype.getClosetBullet = function (px, py, bucketX, bucketsY, buckets) {
-        var closest = bucketX + bucketsY;
-        for (var i = 0; i < buckets.length; i++) {
-            var x = i % bucketX;
-            var y = Math.floor(i / bucketX);
-            if (buckets[i] > 0 && Math.abs(px - x) + Math.abs(py - y) < closest) {
-                closest = Math.abs(px - x) + Math.abs(py - y);
-            }
-        }
-        return closest;
-    };
-    return TreeNode;
-}());
-/// <reference path="TreeNode.ts"/>
-var AStar = (function () {
-    function AStar(type, repeatingAction) {
-        this.type = type;
-        this.repeatingAction = repeatingAction;
-    }
-    AStar.prototype.initialize = function () {
+        return { x: bestX, y: bestY };
     };
     AStar.prototype.getAction = function (world, value, parameters) {
         var startTime = new Date().getTime();
-        var openNodes = [new TreeNode(null, -1, world.clone(), parameters)];
+        var tempWorld = world.clone();
+        tempWorld.hideUnknown = true;
+        var openNodes = [new TreeNode(null, -1, tempWorld, parameters)];
         var bestNode = openNodes[0];
         var currentNumbers = 0;
         var solution = [];
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        var target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
         while (openNodes.length > 0 && solution.length == 0) {
             if (this.type == "time" && new Date().getTime() - startTime >= value) {
                 break;
             }
-            openNodes.sort(function (a, b) { return a.getEvaluation() - b.getEvaluation(); });
+            openNodes.sort(function (a, b) { return a.getEvaluation(target) - b.getEvaluation(target); });
             var currentNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 if (this.type == "node" && currentNumbers >= value) {
                     continue;
                 }
                 for (var i = 0; i < currentNode.children.length; i++) {
-                    var node = currentNode.addChild(i, 20, parameters);
+                    var node = currentNode.addChild(i, 10, parameters);
                     if (node.world.isWon()) {
                         solution = node.getSequence();
                         break;
                     }
-                    if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
+                    if (node.numChildren > 0 || node.getEvaluation(target) > bestNode.getEvaluation(target)) {
                         bestNode = node;
                     }
                     openNodes.push(node);
@@ -428,25 +425,4 @@ var AStar = (function () {
         return action;
     };
     return AStar;
-}());
-/// <reference path="TreeNode.ts"/>
-var OneStepLookAhead = (function () {
-    function OneStepLookAhead(type, repeatingAction) {
-        this.type = type;
-        this.repeatingAction = repeatingAction;
-    }
-    OneStepLookAhead.prototype.initialize = function () {
-    };
-    OneStepLookAhead.prototype.getAction = function (world, value, parameters) {
-        var rootNode = new TreeNode(null, -1, world.clone(), parameters);
-        var bestNode = rootNode;
-        for (var i = 0; i < rootNode.children.length; i++) {
-            var node = rootNode.addChild(i, this.repeatingAction, parameters);
-            if (bestNode.numChildren > 0 || node.getEvaluation() > bestNode.getEvaluation()) {
-                bestNode = node;
-            }
-        }
-        return bestNode.getSequence().splice(0, 1)[0];
-    };
-    return OneStepLookAhead;
 }());

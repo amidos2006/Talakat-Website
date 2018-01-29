@@ -59,23 +59,21 @@ var TreeNode = (function () {
         this.world = world;
         var tempWorld = world.clone();
         this.safezone = 0.0;
-        for (var i = 0; i < 20; i++) {
+        var startTime = new Date().getTime();
+        for (var i = 0; i < 10; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
+                // console.log("Safety Fails");
+                tempWorld = null;
                 break;
             }
             if (tempWorld.isWon()) {
-                this.safezone = 20.0;
+                this.safezone = 10.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 20.0;
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.futurezone = 1.0 / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -83,11 +81,17 @@ var TreeNode = (function () {
         var newWorld = this.world.clone();
         var startTime = new Date().getTime();
         for (var i = 0; i < macroAction; i++) {
+            // console.log("Adding Child With Action " + action)
             newWorld.update(ActionNumber.getAction(action));
+            // console.log("Child Add: " + newWorld.spawners.length)
+            // console.log("Child Add: " + newWorld.hideUnknown)
+            // console.log("Child Add: " + newWorld.boss.getHealth())
             if (newWorld.spawners.length > parameters.maxNumSpawners) {
-                break;
+                // console.log("Add Fails");
+                return null;
             }
-            if (new Date().getTime() - startTime > parameters.maxStepTime) {
+            // console.log("Numbers: " + macroAction + " " + i + " " + parameters)
+            if (newWorld.isWon() || newWorld.isLose()) {
                 break;
             }
         }
@@ -95,13 +99,20 @@ var TreeNode = (function () {
         this.numChildren += 1;
         return this.children[action];
     };
-    TreeNode.prototype.getEvaluation = function (noise) {
+    TreeNode.prototype.getEvaluation = function (target, noise) {
         if (noise === void 0) { noise = 0; }
         var isLose = 0;
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.55 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.25 * (0.75 * this.futurezone + 0.25 * noise);
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var p = {
+            x: Math.floor(this.world.player.x / bucketWidth),
+            y: Math.floor(this.world.player.y / bucketHeight)
+        };
+        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone -
+            0.1 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -115,14 +126,28 @@ var TreeNode = (function () {
         }
         return result.reverse();
     };
-    TreeNode.prototype.initializeBuckets = function (width, height) {
+    return TreeNode;
+}());
+var AStar = (function () {
+    function AStar(parameters, noiseDist, repeatDist) {
+        this.parameters = parameters;
+        this.noiseDist = noiseDist;
+        this.repeatDist = repeatDist;
+    }
+    AStar.prototype.initialize = function () {
+        this.status = GameStatus.NONE;
+        this.target = null;
+        this.noise = 0;
+        this.frames = 0;
+    };
+    AStar.prototype.initializeBuckets = function (width, height) {
         var buckets = [];
         for (var i = 0; i < width * height; i++) {
             buckets.push(0);
         }
         return buckets;
     };
-    TreeNode.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
+    AStar.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
         var s = new Talakat.Point();
         var e = new Talakat.Point();
         for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
@@ -133,7 +158,7 @@ var TreeNode = (function () {
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
             for (var x = s.x; x <= e.x; x++) {
-                for (var y = s.y; y <= e.y; y++) {
+                for (var y = s.y; y < e.y; y++) {
                     var index_1 = y * bucketX + x;
                     if (indeces.indexOf(index_1) == -1) {
                         indeces.push(index_1);
@@ -152,7 +177,7 @@ var TreeNode = (function () {
             }
         }
     };
-    TreeNode.prototype.calculateSurroundingBullets = function (x, y, bucketX, buckets) {
+    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, riskDistance, buckets) {
         var result = 0;
         var visited = {};
         var nodes = [{ x: x, y: y }];
@@ -166,9 +191,9 @@ var TreeNode = (function () {
                 index_3 = 0;
             }
             var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
-            if (!visited.hasOwnProperty(index_3) && dist < 3) {
+            if (!visited.hasOwnProperty(index_3) && dist <= riskDistance) {
                 visited[index_3] = true;
-                result += buckets[index_3];
+                result += buckets[index_3] / (dist + 1);
                 for (var dx = -1; dx <= 1; dx++) {
                     for (var dy = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) {
@@ -187,94 +212,19 @@ var TreeNode = (function () {
         }
         return result;
     };
-    TreeNode.prototype.distanceSafeBucket = function (px, py, bucketX, buckets) {
+    AStar.prototype.getSafestBucket = function (px, py, bucketX, buckets) {
         var bestX = px;
         var bestY = py;
         for (var i = 0; i < buckets.length; i++) {
             var x = i % bucketX;
             var y = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
                 bestX = x;
                 bestY = y;
             }
         }
-        return Math.abs(px - bestX) + Math.abs(py - bestY);
-    };
-    return TreeNode;
-}());
-// class AStarPlanner{
-//     parameters: any;
-//     status: GameStatus;
-//     constructor(parameters: any) {
-//         this.parameters = parameters;
-//     }
-//     initialize() {
-//         this.status = GameStatus.NONE;
-//     }
-//     plan(world: any, value: number): TreeNode {
-//         let startTime: number = new Date().getTime();
-//         let numNodes: number = 0;
-//         let spawnerFrames: number = 0;
-//         let openNodes: TreeNode[] = [new TreeNode(null, -1, world)];
-//         let bestNode: TreeNode = openNodes[0];
-//         this.status = GameStatus.LOSE;
-//         while (openNodes.length > 0) {
-//             if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
-//                 this.status = GameStatus.TIMEOUT;
-//                 return bestNode;
-//             }
-//             openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
-//             let currentNode: TreeNode = openNodes.pop();
-//             if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
-//                 bestNode = currentNode;
-//             }
-//             if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-//                 spawnerFrames += 1;
-//                 if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-//                     this.status = GameStatus.SPAWNERSTOBULLETS;
-//                     return bestNode;
-//                 }
-//             }
-//             else {
-//                 spawnerFrames = 0;
-//             }
-//             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-//                 this.status = GameStatus.ALOTSPAWNERS;
-//                 return bestNode;
-//             }
-//             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-//                 if (this.parameters.agentType == "node" && numNodes > value) {
-//                     this.status = GameStatus.NODEOUT;
-//                     continue;
-//                 }
-//                 for (let i: number = 0; i < currentNode.children.length; i++) {
-//                     let tempStartGame: number = new Date().getTime();
-//                     let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
-//                     if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-//                         this.status = GameStatus.TOOSLOW;
-//                         return bestNode;
-//                     }
-//                     if (node.world.isWon()) {
-//                         this.status = GameStatus.WIN;
-//                         return node;
-//                     }
-//                     openNodes.push(node);
-//                     numNodes += 1;
-//                 }
-//             }
-//         }
-//         return bestNode;
-//     }
-// }
-var AStar = (function () {
-    function AStar(parameters, noiseDist, repeatDist) {
-        this.parameters = parameters;
-        this.noiseDist = noiseDist;
-        this.repeatDist = repeatDist;
-    }
-    AStar.prototype.initialize = function () {
-        this.status = GameStatus.NONE;
+        return { x: bestX, y: bestY };
     };
     AStar.prototype.getAction = function (world, value) {
         var _this = this;
@@ -282,15 +232,32 @@ var AStar = (function () {
         var openNodes = [new TreeNode(null, -1, world.clone(), this.parameters)];
         var bestNode = openNodes[0];
         var currentNumbers = 0;
-        var solution = [];
-        while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort(function (a, b) { return a.getEvaluation(_this.noiseDist.ppf(Math.random())) - b.getEvaluation(_this.noiseDist.ppf(Math.random())); });
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        if (this.frames <= 0) {
+            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+            this.noise = 0;
+            this.frames = 30;
+        }
+        else {
+            this.frames -= 1;
+        }
+        while (openNodes.length > 0) {
+            openNodes.sort(function (a, b) { return a.getEvaluation(_this.target, _this.noise) - b.getEvaluation(_this.target, _this.noise); });
             var currentNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (var i = 0; i < currentNode.children.length; i++) {
                     // console.log("Start One Action")
-                    var node = currentNode.addChild(i, 20, this.parameters);
-                    // console.log("End One Action " + currentNode.world.spawners.length)
+                    var node = currentNode.addChild(i, 10, this.parameters);
+                    // console.log("Action Add: " + currentNode.world.spawners.length)
+                    // console.log("Action Add: " + currentNode.world.hideUnknown)
+                    // console.log("Action Add: " + currentNode.world.boss.getHealth())
+                    if (node == null) {
+                        // console.log("Action Expand");
+                        return -1;
+                    }
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
                         openNodes.length = 0;
                         break;
@@ -299,11 +266,8 @@ var AStar = (function () {
                         openNodes.length = 0;
                         break;
                     }
-                    if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                        openNodes.length = 0;
-                        break;
-                    }
-                    if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
+                    if (bestNode.numChildren > 0 ||
+                        node.getEvaluation(this.target, this.noise) > bestNode.getEvaluation(this.target, this.noise)) {
                         bestNode = node;
                     }
                     if (node.world.isWon()) {
@@ -311,10 +275,16 @@ var AStar = (function () {
                         bestNode = node;
                         break;
                     }
+                    if (node.world.isLose()) {
+                        continue;
+                    }
                     openNodes.push(node);
                 }
             }
             currentNumbers += 1;
+            // console.log("Action: " + currentNode.world.spawners.length)
+            // console.log("Action: " + currentNode.world.hideUnknown)
+            // console.log("Action: " + currentNode.world.boss.getHealth())
         }
         var action = bestNode.getSequence().splice(0, 1)[0];
         return action;
@@ -325,48 +295,51 @@ var AStar = (function () {
         this.status = GameStatus.LOSE;
         var startGame = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-            // console.log("Get Action")
-            var action = this.getAction(currentNode.world.clone(), value);
+            var actionNode = currentNode.world.clone();
+            actionNode.hideUnknown = true;
+            var action = this.getAction(actionNode, value);
+            // console.log("Found Action")
+            // console.log("currentState: " + currentNode.world.spawners.length)
+            // console.log("currentState: " + currentNode.world.hideUnknown)
+            // console.log("currentState: " + currentNode.world.boss.getHealth())
+            if (action == -1) {
+                // console.log("Play Action");
+                this.status = GameStatus.ALOTSPAWNERS;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
             // console.log("Make 10 Moves")
             var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1) {
                 repeatValue = 1;
             }
             var tempStartGame = new Date().getTime();
+            // console.log("Applying Action")
             for (var i = 0; i < repeatValue; i++) {
-                currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
-                if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                    this.status = GameStatus.TOOSLOW;
-                    currentNode.world.spawners.length = 0;
-                    return currentNode;
+                var tempNode = currentNode.addChild(action, 1, parameters);
+                // console.log("tempNode: " + tempNode.world.spawners.length)
+                // console.log("tempNode: " + tempNode.world.hideUnknown)
+                if (tempNode != null) {
+                    currentNode = tempNode;
+                    if (tempNode.world.isWon() || tempNode.world.isLose()) {
+                        break;
+                    }
                 }
-                if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+                else {
+                    // console.log("Play Expand");
                     this.status = GameStatus.ALOTSPAWNERS;
                     currentNode.world.spawners.length = 0;
                     return currentNode;
                 }
             }
-            // if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-            //     spawnerFrames += 1;
-            //     if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-            //         this.status = GameStatus.SPAWNERSTOBULLETS;
-            //         currentNode.world.spawners.length = 0;
-            //         return currentNode;
-            //     }
-            // }
-            // else {
-            //     spawnerFrames = 0;
-            // }
+            // console.log("Spawners: " + currentNode.world.spawners.length)
+            // console.log("Hide Unknown: " + currentNode.world.hideUnknown)
             if (new Date().getTime() - startGame > this.parameters.maxAgentTime) {
                 this.status = GameStatus.TIMEOUT;
                 currentNode.world.spawners.length = 0;
                 return currentNode;
             }
-            // console.log("Boss Health: " + currentNode.world.boss.getHealth())
-            // console.log("Spawners: " + currentNode.world.spawners.length)
-            // console.log("Bullets: " + currentNode.world.bullets.length)
             currentNode.parent.world.spawners.length = 0;
-            // console.log("Spawners After: " + currentNode.world.spawners.length)
         }
         if (currentNode.world.isWon()) {
             this.status = GameStatus.WIN;
@@ -409,20 +382,35 @@ function getSequenceDerivative(sequence) {
     }
     return der;
 }
+function smoothArray(sequence) {
+    var output = [];
+    for (var i = 1; i < sequence.length - 1; i++) {
+        var result = sequence[i - 1] + sequence[i] + sequence[i + 1];
+        if (result > 1) {
+            output.push(1);
+        }
+        else {
+            output.push(0);
+        }
+    }
+    return output;
+}
 function calculateBiEntropy(actionSequence) {
     var entropy = 0;
     var der = [];
+    var smoothed = [];
     if (actionSequence.length > 0) {
-        der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der, 2);
+        entropy += calculateSequenceEntropy(actionSequence, 5);
     }
     if (actionSequence.length > 750) {
-        der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(750), 2);
+        der = getSequenceDerivative(actionSequence);
+        smoothed = smoothArray(der);
+        entropy += calculateSequenceEntropy(smoothed.slice(750), 2);
     }
     if (actionSequence.length > 1500) {
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(1500), 2);
+        smoothed = smoothArray(der);
+        entropy += calculateSequenceEntropy(smoothed.slice(1500), 2);
     }
     return entropy / 3.0;
 }
@@ -446,26 +434,42 @@ function getMaxBulletsBucket(buckets) {
     }
     return max;
 }
-function calculateDensity(buckets, bulletNumber) {
-    return getMaxBulletsBucket(buckets) / bulletNumber;
-}
-function calculateRisk(x, y, bucketsX, buckets) {
+function calculateRisk(x, y, bucketX, riskDist, buckets) {
     var result = 0;
-    for (var dx = -1; dx <= 1; dx++) {
-        for (var dy = -1; dy <= 1; dy++) {
-            var index_5 = (y + dy) * bucketsX + (x + dx);
-            if (index_5 >= buckets.length) {
-                index_5 = buckets.length - 1;
+    var divisor = 0;
+    var visited = {};
+    var nodes = [{ x: x, y: y }];
+    while (nodes.length > 0) {
+        var currentNode = nodes.splice(0, 1)[0];
+        var index_5 = currentNode.y * bucketX + currentNode.x;
+        if (index_5 >= buckets.length) {
+            index_5 = buckets.length - 1;
+        }
+        if (index_5 < 0) {
+            index_5 = 0;
+        }
+        var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+        if (!visited.hasOwnProperty(index_5) && dist <= riskDist) {
+            visited[index_5] = true;
+            result += Math.min(buckets[index_5], 4.0) / (dist + 1);
+            for (var dx = -1; dx <= 1; dx++) {
+                for (var dy = -1; dy <= 1; dy++) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    var index_6 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                    if (index_6 >= buckets.length) {
+                        index_6 = buckets.length - 1;
+                    }
+                    if (index_6 < 0) {
+                        index_6 = 0;
+                    }
+                }
             }
-            if (index_5 < 0) {
-                index_5 = 0;
-            }
-            if (buckets[index_5] > 0) {
-                result += 1.0;
-            }
+            divisor += 1;
         }
     }
-    return result / 9.0;
+    return result / (4 * divisor);
 }
 function initializeBuckets(width, height) {
     var buckets = [];
@@ -486,26 +490,23 @@ function calculateBuckets(width, height, bucketX, bullets, buckets) {
         e.y = Math.floor((b.y + b.radius) / height);
         for (var x = s.x; x <= e.x; x++) {
             for (var y = s.y; y <= e.y; y++) {
-                var index_6 = y * bucketX + x;
-                if (indeces.indexOf(index_6) == -1) {
-                    indeces.push(index_6);
+                var index_7 = y * bucketX + x;
+                if (indeces.indexOf(index_7) == -1) {
+                    indeces.push(index_7);
                 }
             }
         }
         for (var _a = 0, indeces_2 = indeces; _a < indeces_2.length; _a++) {
-            var index_7 = indeces_2[_a];
-            if (index_7 < 0) {
-                index_7 = 0;
+            var index_8 = indeces_2[_a];
+            if (index_8 < 0) {
+                index_8 = 0;
             }
-            if (index_7 >= buckets.length) {
-                index_7 = buckets.length - 1;
+            if (index_8 >= buckets.length) {
+                index_8 = buckets.length - 1;
             }
-            buckets[index_7] += 1;
+            buckets[index_8] += 1;
         }
     }
-}
-function getConstraints(loops, bullets, bossHealth) {
-    return 0.4 / (loops + 1) + 0.4 * bullets + 0.2 * (1 - bossHealth);
 }
 function getFitness(bossHealth) {
     return (1 - bossHealth);
@@ -523,7 +524,6 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
     var bestNode = ai.playGame(startWorld.clone(), parameters.agentValue);
     var risk = 0;
     var distribution = 0;
-    var density = 0;
     var frames = 0;
     var bulletFrames = 0;
     var calculationFrames = parameters.calculationFrames;
@@ -537,9 +537,8 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, buckets);
+            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, 2, buckets);
             distribution += calculateDistribution(buckets);
-            density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
         frames += 1.0;
         currentNode = currentNode.parent;

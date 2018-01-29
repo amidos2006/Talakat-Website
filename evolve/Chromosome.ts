@@ -103,33 +103,15 @@ class Chromosome {
         mutated.constraints = null;
         mutated.behavior = null;
 
-        let index: number = Math.floor(Math.random() * (mutated.spawnersSequence.length + 1));
-        if(index < mutated.spawnersSequence.length){
-            for (let i: number = 0; i < mutated.spawnersSequence[index].length; i++) {
-                mutated.spawnersSequence[index][i] += Math.round(2 * mutationSize * Math.random() - mutationSize);
-                if (mutated.spawnersSequence[index][i] < 0) {
-                    mutated.spawnersSequence[index][i] += maxValue;
-                }
-                if (mutated.spawnersSequence[index][i] >= maxValue) {
-                    mutated.spawnersSequence[index][i] -= maxValue;
-                }
-            }
+        
+        if(Math.random() < 0.75){
+            let index: number = Math.floor(Math.random() * (mutated.spawnersSequence.length));
+            let gene: number = Math.floor(Math.random() * (mutated.spawnersSequence[index].length));
+            mutated.spawnersSequence[index][gene] = Math.floor(Math.random() * maxValue);
         }
         else{
-            for (let i: number = 0; i < mutated.scriptSequence.length; i++) {
-                mutated.scriptSequence[i] += Math.round(2 * mutationSize * Math.random() - mutationSize);
-                if (mutated.scriptSequence[i] < 0) {
-                    mutated.scriptSequence[i] += maxValue;
-                }
-                if (mutated.scriptSequence[i] >= maxValue) {
-                    mutated.scriptSequence[i] -= maxValue;
-                }
-            }
-        }
-        for (let i: number = 0; i < mutated.spawnersSequence.length; i++) {
-            if (Math.random() < 0.5) {
-                
-            }
+            let gene: number = Math.floor(Math.random() * (mutated.scriptSequence.length));
+            mutated.scriptSequence[gene] = Math.floor(Math.random() * maxValue);
         }
 
         return mutated;

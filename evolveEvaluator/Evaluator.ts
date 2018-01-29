@@ -67,24 +67,21 @@ class TreeNode {
         this.world = world;
         let tempWorld:any = world.clone();
         this.safezone = 0.0;
-        for(let i:number=0; i<20; i++){
+        let startTime:number = new Date().getTime();
+        for(let i:number=0; i<10; i++){
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
+                // console.log("Safety Fails");
+                tempWorld = null;
                 break;
             }
             if(tempWorld.isWon()){
-                this.safezone = 20.0;
+                this.safezone = 10.0;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 20.0;
-        let bucketWidth: number = parameters.width / parameters.bucketsX;
-        let bucketHeight: number = parameters.height / parameters.bucketsY;
-        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        this.futurezone = 1.0 / (this.distanceSafeBucket(Math.floor(world.player.x / bucketWidth),
-            Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets) + 1);
+        this.safezone = this.safezone / 10.0;
         this.numChildren = 0;
     }
 
@@ -92,11 +89,17 @@ class TreeNode {
         let newWorld: any = this.world.clone();
         let startTime:number = new Date().getTime();
         for (let i: number = 0; i < macroAction; i++) {
+            // console.log("Adding Child With Action " + action)
             newWorld.update(ActionNumber.getAction(action));
+            // console.log("Child Add: " + newWorld.spawners.length)
+            // console.log("Child Add: " + newWorld.hideUnknown)
+            // console.log("Child Add: " + newWorld.boss.getHealth())
             if (newWorld.spawners.length > parameters.maxNumSpawners){
-                break;
+                // console.log("Add Fails");
+                return null;
             }
-            if(new Date().getTime() - startTime > parameters.maxStepTime){
+            // console.log("Numbers: " + macroAction + " " + i + " " + parameters)
+            if(newWorld.isWon() || newWorld.isLose()){
                 break;
             }
         }
@@ -105,12 +108,19 @@ class TreeNode {
         return this.children[action];
     }
 
-    getEvaluation(noise: number = 0): number {
+    getEvaluation(target:any,noise: number = 0): number {
         let isLose: number = 0;
         if (this.world.isLose()) {
             isLose = 1;
         }
-        return 0.55 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 0.25 * (0.75 * this.futurezone + 0.25 * noise);
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let p: any = {
+            x: Math.floor(this.world.player.x / bucketWidth),
+            y: Math.floor(this.world.player.y / bucketHeight)
+        };
+        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.3 * this.safezone -
+            0.2 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     }
 
     getSequence(macroAction: number = 1): number[] {
@@ -123,6 +133,29 @@ class TreeNode {
             currentNode = currentNode.parent;
         }
         return result.reverse();
+    }
+}
+
+class AStar {
+    parameters: any;
+    status: GameStatus;
+    noiseDist:any;
+    repeatDist:any;
+    target:any;
+    noise:number;
+    frames:number;
+
+    constructor(parameters:any, noiseDist:any, repeatDist:any) {
+        this.parameters = parameters;
+        this.noiseDist = noiseDist;
+        this.repeatDist = repeatDist;
+    }
+
+    initialize() {
+        this.status = GameStatus.NONE;
+        this.target = null;
+        this.noise = 0;
+        this.frames = 0;
     }
 
     private initializeBuckets(width: number, height: number): number[] {
@@ -139,14 +172,14 @@ class TreeNode {
         for (let b of bullets) {
             let indeces: number[] = [];
 
-            s.x = Math.floor((b.x - b.radius)/ width);
+            s.x = Math.floor((b.x - b.radius) / width);
             s.y = Math.floor((b.y - b.radius) / height);
 
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
 
-            for(let x:number=s.x; x<=e.x; x++){
-                for(let y:number=s.y; y<=e.y; y++){
+            for (let x: number = s.x; x <= e.x; x++) {
+                for (let y: number = s.y; y < e.y; y++) {
                     let index = y * bucketX + x;
                     if (indeces.indexOf(index) == -1) {
                         indeces.push(index);
@@ -166,7 +199,7 @@ class TreeNode {
         }
     }
 
-    private calculateSurroundingBullets(x: number, y: number, bucketX: number, buckets: number[]): number {
+    private calculateSurroundingBullets(x: number, y: number, bucketX: number, riskDistance: number, buckets: number[]): number {
         let result: number = 0;
         let visited: any = {};
         let nodes: any[] = [{ x: x, y: y }];
@@ -180,9 +213,9 @@ class TreeNode {
                 index = 0;
             }
             let dist: number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
-            if (!visited.hasOwnProperty(index) && dist < 3) {
+            if (!visited.hasOwnProperty(index) && dist <= riskDistance) {
                 visited[index] = true;
-                result += buckets[index];
+                result += buckets[index] / (dist + 1);
                 for (let dx: number = -1; dx <= 1; dx++) {
                     for (let dy: number = -1; dy <= 1; dy++) {
                         if (dx == 0 && dy == 0) {
@@ -203,106 +236,19 @@ class TreeNode {
         return result;
     }
 
-    private distanceSafeBucket(px: number, py: number, bucketX: number, buckets: number[]): number {
+    private getSafestBucket(px: number, py: number, bucketX: number, buckets: number[]): any {
         let bestX: number = px;
         let bestY: number = py;
         for (let i: number = 0; i < buckets.length; i++) {
             let x: number = i % bucketX;
             let y: number = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
                 bestX = x;
                 bestY = y;
             }
         }
-        return Math.abs(px - bestX) + Math.abs(py - bestY);
-    }
-}
-
-// class AStarPlanner{
-//     parameters: any;
-//     status: GameStatus;
-
-//     constructor(parameters: any) {
-//         this.parameters = parameters;
-//     }
-
-//     initialize() {
-//         this.status = GameStatus.NONE;
-//     }
-
-//     plan(world: any, value: number): TreeNode {
-//         let startTime: number = new Date().getTime();
-//         let numNodes: number = 0;
-//         let spawnerFrames: number = 0;
-//         let openNodes: TreeNode[] = [new TreeNode(null, -1, world)];
-//         let bestNode: TreeNode = openNodes[0];
-//         this.status = GameStatus.LOSE;
-
-//         while (openNodes.length > 0) {
-//             if (this.parameters.agentType == "time" && new Date().getTime() - startTime > value) {
-//                 this.status = GameStatus.TIMEOUT;
-//                 return bestNode;
-//             }
-
-//             openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation() - b.getEvaluation());
-//             let currentNode: TreeNode = openNodes.pop();
-//             if (bestNode.getEvaluation() < currentNode.getEvaluation()) {
-//                 bestNode = currentNode;
-//             }
-//             if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-//                 spawnerFrames += 1;
-//                 if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-//                     this.status = GameStatus.SPAWNERSTOBULLETS;
-//                     return bestNode;
-//                 }
-//             }
-//             else {
-//                 spawnerFrames = 0;
-//             }
-//             if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-//                 this.status = GameStatus.ALOTSPAWNERS;
-//                 return bestNode;
-//             }
-//             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-//                 if (this.parameters.agentType == "node" && numNodes > value) {
-//                     this.status = GameStatus.NODEOUT;
-//                     continue;
-//                 }
-//                 for (let i: number = 0; i < currentNode.children.length; i++) {
-//                     let tempStartGame: number = new Date().getTime();
-//                     let node: TreeNode = currentNode.addChild(i, this.parameters.repeatingAction, this.parameters.maxNumSpawners);
-//                     if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-//                         this.status = GameStatus.TOOSLOW;
-//                         return bestNode;
-//                     }
-//                     if (node.world.isWon()) {
-//                         this.status = GameStatus.WIN;
-//                         return node;
-//                     }
-//                     openNodes.push(node);
-//                     numNodes += 1;
-//                 }
-//             }
-//         }
-//         return bestNode;
-//     }
-// }
-
-class AStar {
-    parameters: any;
-    status: GameStatus;
-    noiseDist:any;
-    repeatDist:any;
-
-    constructor(parameters:any, noiseDist:any, repeatDist:any) {
-        this.parameters = parameters;
-        this.noiseDist = noiseDist;
-        this.repeatDist = repeatDist;
-    }
-
-    initialize() {
-        this.status = GameStatus.NONE;
+        return { x: bestX, y: bestY };
     }
 
     private getAction(world: any, value: number): number {
@@ -310,15 +256,33 @@ class AStar {
         let openNodes: TreeNode[] = [new TreeNode(null, -1, world.clone(), this.parameters)];
         let bestNode: TreeNode = openNodes[0];
         let currentNumbers: number = 0;
-        let solution: number[] = [];
-        while (openNodes.length > 0 && solution.length == 0) {
-            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(this.noiseDist.ppf(Math.random())) - b.getEvaluation(this.noiseDist.ppf(Math.random())));
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        if(this.frames <= 0){
+            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth),
+                Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+            this.noise = 0;
+            this.frames = 30;
+        }
+        else{
+            this.frames -= 1;
+        }
+        while (openNodes.length > 0) {
+            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(this.target, this.noise) - b.getEvaluation(this.target, this.noise));
             let currentNode: TreeNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (let i: number = 0; i < currentNode.children.length; i++) {
                     // console.log("Start One Action")
-                    let node: TreeNode = currentNode.addChild(i, 20, this.parameters);
-                    // console.log("End One Action " + currentNode.world.spawners.length)
+                    let node: TreeNode = currentNode.addChild(i, 10, this.parameters);
+                    // console.log("Action Add: " + currentNode.world.spawners.length)
+                    // console.log("Action Add: " + currentNode.world.hideUnknown)
+                    // console.log("Action Add: " + currentNode.world.boss.getHealth())
+                    if(node == null){
+                        // console.log("Action Expand");
+                        return -1;
+                    }
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
                         openNodes.length = 0;
                         break;
@@ -327,11 +291,8 @@ class AStar {
                         openNodes.length = 0;
                         break;
                     }
-                    if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
-                        openNodes.length = 0;
-                        break;
-                    }
-                    if (bestNode.numChildren > 0 || node.getEvaluation(this.noiseDist.ppf(Math.random())) > bestNode.getEvaluation(this.noiseDist.ppf(Math.random()))) {
+                    if (bestNode.numChildren > 0 || 
+                        node.getEvaluation(this.target, this.noise) > bestNode.getEvaluation(this.target, this.noise)) {
                         bestNode = node;
                     }
                     if (node.world.isWon()) {
@@ -339,10 +300,16 @@ class AStar {
                         bestNode = node;
                         break;
                     }
+                    if(node.world.isLose()){
+                        continue; 
+                    }
                     openNodes.push(node);
                 }
             }
             currentNumbers += 1;
+            // console.log("Action: " + currentNode.world.spawners.length)
+            // console.log("Action: " + currentNode.world.hideUnknown)
+            // console.log("Action: " + currentNode.world.boss.getHealth())
         }
         let action: number = bestNode.getSequence().splice(0, 1)[0];
         return action;
@@ -354,49 +321,52 @@ class AStar {
         this.status = GameStatus.LOSE;
         let startGame:number = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()){
-            // console.log("Get Action")
-            let action:number = this.getAction(currentNode.world.clone(), value);
+            let actionNode:any = currentNode.world.clone();
+            actionNode.hideUnknown = true;
+            let action: number = this.getAction(actionNode, value);
+            // console.log("Found Action")
+            // console.log("currentState: " + currentNode.world.spawners.length)
+            // console.log("currentState: " + currentNode.world.hideUnknown)
+            // console.log("currentState: " + currentNode.world.boss.getHealth())
+            if(action == -1){
+                // console.log("Play Action");
+                this.status = GameStatus.ALOTSPAWNERS;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
             // console.log("Make 10 Moves")
             let repeatValue:number = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1){
                 repeatValue = 1;
             }
             let tempStartGame: number = new Date().getTime();
+            // console.log("Applying Action")
             for(let i:number=0; i<repeatValue; i++){
-                currentNode = currentNode.addChild(action, 1, parameters.maxNumSpawners);
-                if (new Date().getTime() - tempStartGame > this.parameters.maxStepTime) {
-                    this.status = GameStatus.TOOSLOW;
-                    currentNode.world.spawners.length = 0;
-                    return currentNode;
+                let tempNode:any = currentNode.addChild(action, 1, parameters);
+                // console.log("tempNode: " + tempNode.world.spawners.length)
+                // console.log("tempNode: " + tempNode.world.hideUnknown)
+                if(tempNode != null){
+                    currentNode = tempNode;
+                    if(tempNode.world.isWon() || tempNode.world.isLose()){
+                        break;
+                    }
                 }
-                if (currentNode.world.spawners.length > this.parameters.maxNumSpawners) {
+                else {
+                    // console.log("Play Expand");
                     this.status = GameStatus.ALOTSPAWNERS;
                     currentNode.world.spawners.length = 0;
                     return currentNode;
                 }
             }
+            // console.log("Spawners: " + currentNode.world.spawners.length)
+            // console.log("Hide Unknown: " + currentNode.world.hideUnknown)
             
-            // if (currentNode.world.spawners.length > currentNode.world.bullets.length / this.parameters.bulletToSpawner) {
-            //     spawnerFrames += 1;
-            //     if (spawnerFrames > this.parameters.maxSpawnerFrames) {
-            //         this.status = GameStatus.SPAWNERSTOBULLETS;
-            //         currentNode.world.spawners.length = 0;
-            //         return currentNode;
-            //     }
-            // }
-            // else {
-            //     spawnerFrames = 0;
-            // }
             if (new Date().getTime() - startGame > this.parameters.maxAgentTime){
                 this.status = GameStatus.TIMEOUT;
                 currentNode.world.spawners.length = 0;
                 return currentNode;
             }
-            // console.log("Boss Health: " + currentNode.world.boss.getHealth())
-            // console.log("Spawners: " + currentNode.world.spawners.length)
-            // console.log("Bullets: " + currentNode.world.bullets.length)
             currentNode.parent.world.spawners.length = 0;
-            // console.log("Spawners After: " + currentNode.world.spawners.length)
         }
 
         if (currentNode.world.isWon()){
@@ -441,22 +411,41 @@ function getSequenceDerivative(sequence:number[]):number[]{
     return der;
 }
 
+function smoothArray(sequence:number[]):number[]{
+    let output:number[] = [];
+    for(let i:number=1; i<sequence.length-1; i++){
+        let result:number = sequence[i-1] + sequence[i] + sequence[i+1];
+        if(result > 1){
+            output.push(1)
+        }
+        else{
+            output.push(0)
+        }
+    }
+    return output;
+}
+
 function calculateBiEntropy(actionSequence:number[]):number{
     let entropy:number = 0;
     let der: number[] = [];
+    let smoothed: number[] = [];
+    // if(actionSequence.length > 0){
+    //     entropy += calculateSequenceEntropy(actionSequence, 5);
+    // }
+    
     if(actionSequence.length > 0){
         der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(der, 2);
+        entropy += calculateSequenceEntropy(smoothed.slice(0), 2);
     }
-    
     if(actionSequence.length > 750){
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(750), 2);
+        entropy += calculateSequenceEntropy(smoothed.slice(750), 2);
     }
-    if(actionSequence.length > 1500){
+    if (actionSequence.length > 1500) {
         der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(der.slice(1500), 2);
+        entropy += calculateSequenceEntropy(smoothed.slice(1500), 2);
     }
+    
     return entropy / 3.0;
 }
 
@@ -480,27 +469,43 @@ function getMaxBulletsBucket(buckets:number[]){
     return max;
 }
 
-function calculateDensity(buckets:number[], bulletNumber:number):number{
-    return getMaxBulletsBucket(buckets) / bulletNumber;
-}
-
-function calculateRisk(x:number, y:number, bucketsX:number, buckets:number[]):number{
-    let result:number = 0;
-    for(let dx:number=-1; dx<=1; dx++){
-        for(let dy:number=-1; dy<=1; dy++){
-            let index: number = (y + dy) * bucketsX + (x + dx);
-            if(index >= buckets.length){
-                index = buckets.length - 1;
+function calculateRisk(x:number, y:number, bucketX:number, riskDist:number, buckets:number[]):number{
+    let result: number = 0;
+    let divisor: number = 0;
+    let visited: any = {};
+    let nodes: any[] = [{ x: x, y: y }];
+    while (nodes.length > 0) {
+        let currentNode: any = nodes.splice(0, 1)[0];
+        let index: number = currentNode.y * bucketX + currentNode.x;
+        if (index >= buckets.length) {
+            index = buckets.length - 1;
+        }
+        if (index < 0) {
+            index = 0;
+        }
+        let dist: number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
+        if (!visited.hasOwnProperty(index) && dist <= riskDist) {
+            visited[index] = true;
+            result += Math.min(buckets[index], 4.0) / (dist + 1);
+            for (let dx: number = -1; dx <= 1; dx++) {
+                for (let dy: number = -1; dy <= 1; dy++) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    let index: number = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
+                    if (index >= buckets.length) {
+                        index = buckets.length - 1;
+                    }
+                    if (index < 0) {
+                        index = 0;
+                    }
+                }
             }
-            if(index < 0){
-                index = 0;
-            }
-            if(buckets[index] > 0){
-                result += 1.0;
-            }
+            divisor += 1;
         }
     }
-    return result/9.0;
+
+    return result / (4 * divisor);
 }
 
 function initializeBuckets(width:number, height:number):number[]{
@@ -544,10 +549,6 @@ function calculateBuckets(width:number, height:number, bucketX:number, bullets:a
     }
 }
 
-function getConstraints(loops:number, bullets:number, bossHealth:number):number{
-    return 0.4 / (loops + 1) + 0.4 * bullets + 0.2 * (1 - bossHealth);
-}
-
 function getFitness(bossHealth:number):number{
     return (1 - bossHealth);
 }
@@ -567,7 +568,6 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
 
     let risk: number = 0;
     let distribution: number = 0;
-    let density: number = 0;
     let frames: number = 0;
     let bulletFrames:number = 0;
     let calculationFrames: number = parameters.calculationFrames;
@@ -582,9 +582,8 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
             calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
             bulletFrames += 1;
             risk += calculateRisk(Math.floor(currentNode.world.player.x/bucketWidth), 
-                Math.floor(currentNode.world.player.y/bucketHeight), parameters.bucketsX, buckets);
+                Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, 2, buckets);
             distribution += calculateDistribution(buckets);
-            density += calculateDensity(buckets, currentNode.world.bullets.length);
         }
         frames += 1.0;
         currentNode = currentNode.parent;
