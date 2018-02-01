@@ -68,12 +68,12 @@ var TreeNode = (function () {
                 break;
             }
             if (tempWorld.isWon()) {
-                this.safezone = 10.0;
+                this.safezone = 10;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 10;
         this.numChildren = 0;
     }
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
@@ -111,8 +111,8 @@ var TreeNode = (function () {
             x: Math.floor(this.world.player.x / bucketWidth),
             y: Math.floor(this.world.player.y / bucketHeight)
         };
-        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone -
-            0.1 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
+        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone -
+            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -147,7 +147,7 @@ var AStar = (function () {
         }
         return buckets;
     };
-    AStar.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
+    AStar.prototype.calculateBuckets = function (width, height, bucketX, bucketY, bullets, buckets) {
         var s = new Talakat.Point();
         var e = new Talakat.Point();
         for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
@@ -155,8 +155,32 @@ var AStar = (function () {
             var indeces = [];
             s.x = Math.floor((b.x - b.radius) / width);
             s.y = Math.floor((b.y - b.radius) / height);
+            if (s.x < 0) {
+                s.x = 0;
+            }
+            if (s.y < 0) {
+                s.y = 0;
+            }
+            if (s.x >= bucketX) {
+                s.x = bucketX - 1;
+            }
+            if (s.y >= bucketY) {
+                s.y = bucketY - 1;
+            }
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
+            if (e.x < 0) {
+                e.x = 0;
+            }
+            if (e.y < 0) {
+                e.y = 0;
+            }
+            if (e.x >= bucketX) {
+                e.x = bucketX - 1;
+            }
+            if (e.y >= bucketY) {
+                e.y = bucketY - 1;
+            }
             for (var x = s.x; x <= e.x; x++) {
                 for (var y = s.y; y < e.y; y++) {
                     var index_1 = y * bucketX + x;
@@ -167,29 +191,20 @@ var AStar = (function () {
             }
             for (var _a = 0, indeces_1 = indeces; _a < indeces_1.length; _a++) {
                 var index_2 = indeces_1[_a];
-                if (index_2 < 0) {
-                    index_2 = 0;
-                }
-                if (index_2 >= buckets.length) {
-                    index_2 = buckets.length - 1;
+                if (index_2 < 0 || index_2 >= buckets.length) {
+                    continue;
                 }
                 buckets[index_2] += 1;
             }
         }
     };
-    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, riskDistance, buckets) {
+    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, bucketY, riskDistance, buckets) {
         var result = 0;
         var visited = {};
         var nodes = [{ x: x, y: y }];
         while (nodes.length > 0) {
             var currentNode = nodes.splice(0, 1)[0];
             var index_3 = currentNode.y * bucketX + currentNode.x;
-            if (index_3 >= buckets.length) {
-                index_3 = buckets.length - 1;
-            }
-            if (index_3 < 0) {
-                index_3 = 0;
-            }
             var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
             if (!visited.hasOwnProperty(index_3) && dist <= riskDistance) {
                 visited[index_3] = true;
@@ -199,27 +214,34 @@ var AStar = (function () {
                         if (dx == 0 && dy == 0) {
                             continue;
                         }
-                        var index_4 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
-                        if (index_4 >= buckets.length) {
-                            index_4 = buckets.length - 1;
+                        var pos = { x: currentNode.x + dx, y: currentNode.y + dy };
+                        if (pos.x < 0) {
+                            pos.x = 0;
                         }
-                        if (index_4 < 0) {
-                            index_4 = 0;
+                        if (pos.y < 0) {
+                            pos.y = 0;
                         }
+                        if (pos.x >= bucketX) {
+                            pos.x = bucketX - 1;
+                        }
+                        if (pos.y >= bucketY) {
+                            pos.y = bucketY - 1;
+                        }
+                        nodes.push(pos);
                     }
                 }
             }
         }
         return result;
     };
-    AStar.prototype.getSafestBucket = function (px, py, bucketX, buckets) {
+    AStar.prototype.getSafestBucket = function (px, py, bucketX, bucketY, buckets) {
         var bestX = px;
         var bestY = py;
         for (var i = 0; i < buckets.length; i++) {
             var x = i % bucketX;
             var y = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, bucketY, 4, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, bucketY, 4, buckets)) {
                 bestX = x;
                 bestY = y;
             }
@@ -235,9 +257,9 @@ var AStar = (function () {
         var bucketWidth = parameters.width / parameters.bucketsX;
         var bucketHeight = parameters.height / parameters.bucketsY;
         var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
         if (this.frames <= 0) {
-            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
             this.noise = 0;
             this.frames = 30;
         }
@@ -398,21 +420,22 @@ function smoothArray(sequence) {
 function calculateBiEntropy(actionSequence) {
     var entropy = 0;
     var der = [];
-    var smoothed = [];
     if (actionSequence.length > 0) {
         entropy += calculateSequenceEntropy(actionSequence, 5);
     }
     if (actionSequence.length > 750) {
         der = getSequenceDerivative(actionSequence);
-        smoothed = smoothArray(der);
-        entropy += calculateSequenceEntropy(smoothed.slice(750), 2);
+        entropy += calculateSequenceEntropy(der.slice(750), 2);
     }
     if (actionSequence.length > 1500) {
         der = getSequenceDerivative(der);
-        smoothed = smoothArray(der);
-        entropy += calculateSequenceEntropy(smoothed.slice(1500), 2);
+        entropy += calculateSequenceEntropy(der.slice(1500), 2);
     }
-    return entropy / 3.0;
+    if (actionSequence.length > 2250) {
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(2250), 2);
+    }
+    return entropy / 4.0;
 }
 function calculateDistribution(buckets) {
     var result = 0;
@@ -434,42 +457,43 @@ function getMaxBulletsBucket(buckets) {
     }
     return max;
 }
-function calculateRisk(x, y, bucketX, riskDist, buckets) {
+function calculateRisk(x, y, bucketX, bucketY, riskDist, buckets) {
     var result = 0;
     var divisor = 0;
     var visited = {};
     var nodes = [{ x: x, y: y }];
     while (nodes.length > 0) {
         var currentNode = nodes.splice(0, 1)[0];
-        var index_5 = currentNode.y * bucketX + currentNode.x;
-        if (index_5 >= buckets.length) {
-            index_5 = buckets.length - 1;
-        }
-        if (index_5 < 0) {
-            index_5 = 0;
-        }
+        var index_4 = currentNode.y * bucketX + currentNode.x;
         var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
-        if (!visited.hasOwnProperty(index_5) && dist <= riskDist) {
-            visited[index_5] = true;
-            result += Math.min(buckets[index_5], 4.0) / (dist + 1);
+        if (!visited.hasOwnProperty(index_4) && dist <= riskDist) {
+            visited[index_4] = true;
+            result += Math.min(buckets[index_4], 4.0) / (dist + 1);
             for (var dx = -1; dx <= 1; dx++) {
                 for (var dy = -1; dy <= 1; dy++) {
                     if (dx == 0 && dy == 0) {
                         continue;
                     }
-                    var index_6 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
-                    if (index_6 >= buckets.length) {
-                        index_6 = buckets.length - 1;
+                    var pos = { x: currentNode.x + dx, y: currentNode.y + dy };
+                    if (pos.x < 0) {
+                        pos.x = 0;
                     }
-                    if (index_6 < 0) {
-                        index_6 = 0;
+                    if (pos.y < 0) {
+                        pos.y = 0;
                     }
+                    if (pos.x >= bucketX) {
+                        pos.x = bucketX - 1;
+                    }
+                    if (pos.y >= bucketY) {
+                        pos.y = bucketY - 1;
+                    }
+                    nodes.push(pos);
                 }
             }
             divisor += 1;
         }
     }
-    return result / (4 * divisor);
+    return result / (4.0 * divisor);
 }
 function initializeBuckets(width, height) {
     var buckets = [];
@@ -478,7 +502,7 @@ function initializeBuckets(width, height) {
     }
     return buckets;
 }
-function calculateBuckets(width, height, bucketX, bullets, buckets) {
+function calculateBuckets(width, height, bucketX, bucketY, bullets, buckets) {
     var s = new Talakat.Point();
     var e = new Talakat.Point();
     for (var _i = 0, bullets_2 = bullets; _i < bullets_2.length; _i++) {
@@ -486,25 +510,46 @@ function calculateBuckets(width, height, bucketX, bullets, buckets) {
         var indeces = [];
         s.x = Math.floor((b.x - b.radius) / width);
         s.y = Math.floor((b.y - b.radius) / height);
+        if (s.x < 0) {
+            s.x = 0;
+        }
+        if (s.y < 0) {
+            s.y = 0;
+        }
+        if (s.x >= bucketX) {
+            s.x = bucketX - 1;
+        }
+        if (s.y >= bucketY) {
+            s.y = bucketY - 1;
+        }
         e.x = Math.floor((b.x + b.radius) / width);
         e.y = Math.floor((b.y + b.radius) / height);
+        if (e.x < 0) {
+            e.x = 0;
+        }
+        if (e.y < 0) {
+            e.y = 0;
+        }
+        if (e.x >= bucketX) {
+            e.x = bucketX - 1;
+        }
+        if (e.y >= bucketY) {
+            e.y = bucketY - 1;
+        }
         for (var x = s.x; x <= e.x; x++) {
-            for (var y = s.y; y <= e.y; y++) {
-                var index_7 = y * bucketX + x;
-                if (indeces.indexOf(index_7) == -1) {
-                    indeces.push(index_7);
+            for (var y = s.y; y < e.y; y++) {
+                var index_5 = y * bucketX + x;
+                if (indeces.indexOf(index_5) == -1) {
+                    indeces.push(index_5);
                 }
             }
         }
         for (var _a = 0, indeces_2 = indeces; _a < indeces_2.length; _a++) {
-            var index_8 = indeces_2[_a];
-            if (index_8 < 0) {
-                index_8 = 0;
+            var index_6 = indeces_2[_a];
+            if (index_6 < 0 || index_6 >= buckets.length) {
+                continue;
             }
-            if (index_8 >= buckets.length) {
-                index_8 = buckets.length - 1;
-            }
-            buckets[index_8] += 1;
+            buckets[index_6] += 1;
         }
     }
 }
@@ -535,9 +580,9 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
     while (currentNode.parent != null) {
         if (currentNode.world.bullets.length > parameters.bulletsFrame) {
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
+            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, currentNode.world.bullets, buckets);
             bulletFrames += 1;
-            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, 2, buckets);
+            risk += calculateRisk(Math.floor(currentNode.world.player.x / bucketWidth), Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, 4, buckets);
             distribution += calculateDistribution(buckets);
         }
         frames += 1.0;
@@ -554,7 +599,8 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            constraints: getFitness(bestNode.world.boss.getHealth()),
+            constraints: getFitness(bestNode.world.boss.getHealth()) *
+                (bulletFrames / (Math.max(1, frames) * parameters.targetMaxBulletsFrame)),
             behavior: [
                 calculateBiEntropy(actionSequence),
                 risk / Math.max(1, frames),

@@ -68,7 +68,7 @@ class TreeNode {
         let tempWorld:any = world.clone();
         this.safezone = 0.0;
         let startTime:number = new Date().getTime();
-        for(let i:number=0; i<10; i++){
+        for(let i:number=0; i<10; i++) {
             tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
             if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
                 // console.log("Safety Fails");
@@ -76,12 +76,12 @@ class TreeNode {
                 break;
             }
             if(tempWorld.isWon()){
-                this.safezone = 10.0;
+                this.safezone = 10;
                 break;
             }
             this.safezone += 1.0;
         }
-        this.safezone = this.safezone / 10.0;
+        this.safezone = this.safezone / 10;
         this.numChildren = 0;
     }
 
@@ -119,8 +119,8 @@ class TreeNode {
             x: Math.floor(this.world.player.x / bucketWidth),
             y: Math.floor(this.world.player.y / bucketHeight)
         };
-        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.3 * this.safezone -
-            0.2 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
+        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone -
+            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     }
 
     getSequence(macroAction: number = 1): number[] {
@@ -166,7 +166,7 @@ class AStar {
         return buckets;
     }
 
-    private calculateBuckets(width: number, height: number, bucketX: number, bullets: any[], buckets: number[]): void {
+    private calculateBuckets(width: number, height: number, bucketX: number, bucketY:number, bullets: any[], buckets: number[]): void {
         let s = new Talakat.Point();
         let e = new Talakat.Point();
         for (let b of bullets) {
@@ -174,9 +174,33 @@ class AStar {
 
             s.x = Math.floor((b.x - b.radius) / width);
             s.y = Math.floor((b.y - b.radius) / height);
+            if (s.x < 0) {
+                s.x = 0;
+            }
+            if (s.y < 0) {
+                s.y = 0;
+            }
+            if (s.x >= bucketX) {
+                s.x = bucketX - 1;
+            }
+            if (s.y >= bucketY) {
+                s.y = bucketY - 1;
+            }
 
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
+            if (e.x < 0) {
+                e.x = 0;
+            }
+            if (e.y < 0) {
+                e.y = 0;
+            }
+            if (e.x >= bucketX) {
+                e.x = bucketX - 1;
+            }
+            if (e.y >= bucketY) {
+                e.y = bucketY - 1;
+            }
 
             for (let x: number = s.x; x <= e.x; x++) {
                 for (let y: number = s.y; y < e.y; y++) {
@@ -188,30 +212,21 @@ class AStar {
             }
 
             for (let index of indeces) {
-                if (index < 0) {
-                    index = 0;
-                }
-                if (index >= buckets.length) {
-                    index = buckets.length - 1;
+                if (index < 0 || index >= buckets.length) {
+                    continue;
                 }
                 buckets[index] += 1;
             }
         }
     }
 
-    private calculateSurroundingBullets(x: number, y: number, bucketX: number, riskDistance: number, buckets: number[]): number {
+    private calculateSurroundingBullets(x: number, y: number, bucketX: number, bucketY:number, riskDistance: number, buckets: number[]): number {
         let result: number = 0;
         let visited: any = {};
         let nodes: any[] = [{ x: x, y: y }];
         while (nodes.length > 0) {
             let currentNode: any = nodes.splice(0, 1)[0];
             let index: number = currentNode.y * bucketX + currentNode.x;
-            if (index >= buckets.length) {
-                index = buckets.length - 1;
-            }
-            if (index < 0) {
-                index = 0;
-            }
             let dist: number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
             if (!visited.hasOwnProperty(index) && dist <= riskDistance) {
                 visited[index] = true;
@@ -221,13 +236,20 @@ class AStar {
                         if (dx == 0 && dy == 0) {
                             continue;
                         }
-                        let index: number = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
-                        if (index >= buckets.length) {
-                            index = buckets.length - 1;
+                        let pos: any = { x: currentNode.x + dx, y: currentNode.y + dy };
+                        if (pos.x < 0) {
+                            pos.x = 0;
                         }
-                        if (index < 0) {
-                            index = 0;
+                        if (pos.y < 0) {
+                            pos.y = 0;
                         }
+                        if (pos.x >= bucketX) {
+                            pos.x = bucketX - 1;
+                        }
+                        if (pos.y >= bucketY) {
+                            pos.y = bucketY - 1;
+                        }
+                        nodes.push(pos);
                     }
                 }
             }
@@ -236,14 +258,14 @@ class AStar {
         return result;
     }
 
-    private getSafestBucket(px: number, py: number, bucketX: number, buckets: number[]): any {
+    private getSafestBucket(px: number, py: number, bucketX: number, bucketY:number, buckets: number[]): any {
         let bestX: number = px;
         let bestY: number = py;
         for (let i: number = 0; i < buckets.length; i++) {
             let x: number = i % bucketX;
             let y: number = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, bucketY, 4, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, bucketY, 4, buckets)) {
                 bestX = x;
                 bestY = y;
             }
@@ -259,10 +281,10 @@ class AStar {
         let bucketWidth: number = parameters.width / parameters.bucketsX;
         let bucketHeight: number = parameters.height / parameters.bucketsY;
         let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
         if(this.frames <= 0){
             this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth),
-                Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+                Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
             this.noise = 0;
             this.frames = 30;
         }
@@ -428,25 +450,24 @@ function smoothArray(sequence:number[]):number[]{
 function calculateBiEntropy(actionSequence:number[]):number{
     let entropy:number = 0;
     let der: number[] = [];
-    let smoothed: number[] = [];
-    // if(actionSequence.length > 0){
-    //     entropy += calculateSequenceEntropy(actionSequence, 5);
-    // }
-    
     if(actionSequence.length > 0){
-        der = getSequenceDerivative(actionSequence);
-        entropy += calculateSequenceEntropy(smoothed.slice(0), 2);
-    }
-    if(actionSequence.length > 750){
-        der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(smoothed.slice(750), 2);
-    }
-    if (actionSequence.length > 1500) {
-        der = getSequenceDerivative(der);
-        entropy += calculateSequenceEntropy(smoothed.slice(1500), 2);
+        entropy += calculateSequenceEntropy(actionSequence, 5);
     }
     
-    return entropy / 3.0;
+    if(actionSequence.length > 750){
+        der = getSequenceDerivative(actionSequence);
+        entropy += calculateSequenceEntropy(der.slice(750), 2);
+    }
+    if(actionSequence.length > 1500){
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(1500), 2);
+    }
+    if (actionSequence.length > 2250) {
+        der = getSequenceDerivative(der);
+        entropy += calculateSequenceEntropy(der.slice(2250), 2);
+    }
+    
+    return entropy / 4.0;
 }
 
 function calculateDistribution(buckets: number[]):number{
@@ -469,7 +490,7 @@ function getMaxBulletsBucket(buckets:number[]){
     return max;
 }
 
-function calculateRisk(x:number, y:number, bucketX:number, riskDist:number, buckets:number[]):number{
+function calculateRisk(x:number, y:number, bucketX:number, bucketY:number, riskDist:number, buckets:number[]):number{
     let result: number = 0;
     let divisor: number = 0;
     let visited: any = {};
@@ -477,12 +498,6 @@ function calculateRisk(x:number, y:number, bucketX:number, riskDist:number, buck
     while (nodes.length > 0) {
         let currentNode: any = nodes.splice(0, 1)[0];
         let index: number = currentNode.y * bucketX + currentNode.x;
-        if (index >= buckets.length) {
-            index = buckets.length - 1;
-        }
-        if (index < 0) {
-            index = 0;
-        }
         let dist: number = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
         if (!visited.hasOwnProperty(index) && dist <= riskDist) {
             visited[index] = true;
@@ -492,20 +507,27 @@ function calculateRisk(x:number, y:number, bucketX:number, riskDist:number, buck
                     if (dx == 0 && dy == 0) {
                         continue;
                     }
-                    let index: number = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
-                    if (index >= buckets.length) {
-                        index = buckets.length - 1;
+                    let pos: any = { x: currentNode.x + dx, y: currentNode.y + dy };
+                    if (pos.x < 0) {
+                        pos.x = 0;
                     }
-                    if (index < 0) {
-                        index = 0;
+                    if (pos.y < 0) {
+                        pos.y = 0;
                     }
+                    if (pos.x >= bucketX) {
+                        pos.x = bucketX - 1;
+                    }
+                    if (pos.y >= bucketY) {
+                        pos.y = bucketY - 1;
+                    }
+                    nodes.push(pos);
                 }
             }
             divisor += 1;
         }
     }
 
-    return result / (4 * divisor);
+    return result / (4.0 * divisor);
 }
 
 function initializeBuckets(width:number, height:number):number[]{
@@ -516,7 +538,7 @@ function initializeBuckets(width:number, height:number):number[]{
     return buckets;
 }
 
-function calculateBuckets(width:number, height:number, bucketX:number, bullets:any[], buckets:number[]):void{
+function calculateBuckets(width:number, height:number, bucketX:number, bucketY:number, bullets:any[], buckets:number[]):void{
     let s = new Talakat.Point();
     let e = new Talakat.Point();
     for (let b of bullets) {
@@ -524,12 +546,36 @@ function calculateBuckets(width:number, height:number, bucketX:number, bullets:a
 
         s.x = Math.floor((b.x - b.radius) / width);
         s.y = Math.floor((b.y - b.radius) / height);
+        if (s.x < 0) {
+            s.x = 0;
+        }
+        if (s.y < 0) {
+            s.y = 0;
+        }
+        if (s.x >= bucketX) {
+            s.x = bucketX - 1;
+        }
+        if (s.y >= bucketY) {
+            s.y = bucketY - 1;
+        }
 
         e.x = Math.floor((b.x + b.radius) / width);
         e.y = Math.floor((b.y + b.radius) / height);
+        if (e.x < 0) {
+            e.x = 0;
+        }
+        if (e.y < 0) {
+            e.y = 0;
+        }
+        if (e.x >= bucketX) {
+            e.x = bucketX - 1;
+        }
+        if (e.y >= bucketY) {
+            e.y = bucketY - 1;
+        }
 
         for (let x: number = s.x; x <= e.x; x++) {
-            for (let y: number = s.y; y <= e.y; y++) {
+            for (let y: number = s.y; y < e.y; y++) {
                 let index = y * bucketX + x;
                 if (indeces.indexOf(index) == -1) {
                     indeces.push(index);
@@ -538,11 +584,8 @@ function calculateBuckets(width:number, height:number, bucketX:number, bullets:a
         }
 
         for (let index of indeces) {
-            if (index < 0) {
-                index = 0;
-            }
-            if (index >= buckets.length) {
-                index = buckets.length - 1;
+            if (index < 0 || index >= buckets.length) {
+                continue;
             }
             buckets[index] += 1;
         }
@@ -579,10 +622,11 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
     while (currentNode.parent != null){
         if(currentNode.world.bullets.length > parameters.bulletsFrame){
             buckets = initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, currentNode.world.bullets, buckets);
+            calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, currentNode.world.bullets, buckets);
             bulletFrames += 1;
             risk += calculateRisk(Math.floor(currentNode.world.player.x/bucketWidth), 
-                Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, 2, buckets);
+                Math.floor(currentNode.world.player.y / bucketHeight), parameters.bucketsX, 
+                parameters.bucketsY, 4, buckets);
             distribution += calculateDistribution(buckets);
         }
         frames += 1.0;
@@ -600,7 +644,8 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
             fitness: 0,
             bossHealth: bestNode.world.boss.getHealth(),
             errorType: ai.status,
-            constraints: getFitness(bestNode.world.boss.getHealth()),
+            constraints: getFitness(bestNode.world.boss.getHealth()) * 
+                (bulletFrames / (Math.max(1, frames) * parameters.targetMaxBulletsFrame)),
             behavior: [
                 calculateBiEntropy(actionSequence), 
                 risk / Math.max(1, frames), 

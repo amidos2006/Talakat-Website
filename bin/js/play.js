@@ -269,8 +269,8 @@ var TreeNode = (function () {
             x: Math.floor(this.world.player.x / bucketWidth),
             y: Math.floor(this.world.player.y / bucketHeight)
         };
-        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone +
-            -0.1 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
+        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone +
+            -0.5 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -301,7 +301,7 @@ var AStar = (function () {
         }
         return buckets;
     };
-    AStar.prototype.calculateBuckets = function (width, height, bucketX, bullets, buckets) {
+    AStar.prototype.calculateBuckets = function (width, height, bucketX, bucketY, bullets, buckets) {
         var s = new Talakat.Point();
         var e = new Talakat.Point();
         for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
@@ -309,8 +309,32 @@ var AStar = (function () {
             var indeces = [];
             s.x = Math.floor((b.x - b.radius) / width);
             s.y = Math.floor((b.y - b.radius) / height);
+            if (s.x < 0) {
+                s.x = 0;
+            }
+            if (s.y < 0) {
+                s.y = 0;
+            }
+            if (s.x >= bucketX) {
+                s.x = bucketX - 1;
+            }
+            if (s.y >= bucketY) {
+                s.y = bucketY - 1;
+            }
             e.x = Math.floor((b.x + b.radius) / width);
             e.y = Math.floor((b.y + b.radius) / height);
+            if (e.x < 0) {
+                e.x = 0;
+            }
+            if (e.y < 0) {
+                e.y = 0;
+            }
+            if (e.x >= bucketX) {
+                e.x = bucketX - 1;
+            }
+            if (e.y >= bucketY) {
+                e.y = bucketY - 1;
+            }
             for (var x = s.x; x <= e.x; x++) {
                 for (var y = s.y; y < e.y; y++) {
                     var index = y * bucketX + x;
@@ -321,29 +345,20 @@ var AStar = (function () {
             }
             for (var _a = 0, indeces_1 = indeces; _a < indeces_1.length; _a++) {
                 var index = indeces_1[_a];
-                if (index < 0) {
-                    index = 0;
-                }
-                if (index >= buckets.length) {
-                    index = buckets.length - 1;
+                if (index < 0 || index >= buckets.length) {
+                    continue;
                 }
                 buckets[index] += 1;
             }
         }
     };
-    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, riskDistance, buckets) {
+    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, bucketY, riskDistance, buckets) {
         var result = 0;
         var visited = {};
         var nodes = [{ x: x, y: y }];
         while (nodes.length > 0) {
             var currentNode = nodes.splice(0, 1)[0];
             var index = currentNode.y * bucketX + currentNode.x;
-            if (index >= buckets.length) {
-                index = buckets.length - 1;
-            }
-            if (index < 0) {
-                index = 0;
-            }
             var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
             if (!visited.hasOwnProperty(index) && dist <= riskDistance) {
                 visited[index] = true;
@@ -353,27 +368,34 @@ var AStar = (function () {
                         if (dx == 0 && dy == 0) {
                             continue;
                         }
-                        var index_1 = (currentNode.y + dy) * bucketX + (currentNode.x + dx);
-                        if (index_1 >= buckets.length) {
-                            index_1 = buckets.length - 1;
+                        var pos = { x: currentNode.x + dx, y: currentNode.y + dy };
+                        if (pos.x < 0) {
+                            pos.x = 0;
                         }
-                        if (index_1 < 0) {
-                            index_1 = 0;
+                        if (pos.y < 0) {
+                            pos.y = 0;
                         }
+                        if (pos.x >= bucketX) {
+                            pos.x = bucketX - 1;
+                        }
+                        if (pos.y >= bucketY) {
+                            pos.y = bucketY - 1;
+                        }
+                        nodes.push(pos);
                     }
                 }
             }
         }
         return result;
     };
-    AStar.prototype.getSafestBucket = function (px, py, bucketX, buckets) {
+    AStar.prototype.getSafestBucket = function (px, py, bucketX, bucketY, buckets) {
         var bestX = px;
         var bestY = py;
         for (var i = 0; i < buckets.length; i++) {
             var x = i % bucketX;
             var y = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, 3, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, 3, buckets)) {
+            if (this.calculateSurroundingBullets(x, y, bucketX, bucketY, 4, buckets) <
+                this.calculateSurroundingBullets(bestX, bestY, bucketX, bucketY, 4, buckets)) {
                 bestX = x;
                 bestY = y;
             }
@@ -391,8 +413,9 @@ var AStar = (function () {
         var bucketWidth = parameters.width / parameters.bucketsX;
         var bucketHeight = parameters.height / parameters.bucketsY;
         var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, world.bullets, buckets);
-        var target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, buckets);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
+        var target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
+        console.log(target);
         while (openNodes.length > 0 && solution.length == 0) {
             if (this.type == "time" && new Date().getTime() - startTime >= value) {
                 break;

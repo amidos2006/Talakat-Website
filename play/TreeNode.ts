@@ -91,8 +91,8 @@ class TreeNode{
             x:Math.floor(this.world.player.x / bucketWidth),
             y: Math.floor(this.world.player.y / bucketHeight)
         };
-        return 0.7 * (1 - this.world.boss.getHealth()) - isLose + 0.2 * this.safezone + 
-            - 0.1 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
+        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone + 
+            - 0.5 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     }
 
     getSequence(macroAction:number=1):number[]{
