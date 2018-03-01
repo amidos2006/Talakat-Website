@@ -12,6 +12,14 @@
             ]
         },
         {
+            "label": "Build Play Generated Environment",
+            "type": "typescript",
+            "tsconfig": "playGenerated/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ]
+        },
+        {
             "label": "Build Generate Environment",
             "type": "typescript",
             "tsconfig": "generate/tsconfig.json",

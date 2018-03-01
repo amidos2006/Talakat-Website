@@ -15,7 +15,7 @@
     "maxNumBullets": 1000,
     "bulletToSpawner": 0.5,
     "calculationFrames": 1,
-    "repeatingAction": 0.0000001,
+    "repeatingAction": 4,
     "noiseStd": 0.0000001,
 
     "saveFrames": "results/",

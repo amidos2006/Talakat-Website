@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "es5",
+		"sourceMap": false,
+		"outDir": "bin",
+		"outFile": "../bin/js/playGenerated.js"
+	},
+	"include": [
+		"Play.ts",
+		"Agent.ts",
+		"AStar.ts",
+		"TreeNode.ts",
+		"../definitions/*"
+	]
+}
