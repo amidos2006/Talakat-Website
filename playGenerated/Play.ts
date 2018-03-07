@@ -21,6 +21,7 @@ let totalDrawTime:number;
 let spawnerGrammar:any;
 let scriptGrammar:any;
 let parameters:any;
+let generatedLevels:any;
 
 let playerImg:any;
 let bossImg:any;
@@ -31,10 +32,22 @@ function debugLog(text: string): void {
 
 function preload():void{
     debugLog("Loading Assets.\n");
+
     spawnerGrammar = loadJSON("assets/spawnerGrammar.json", spawnersReady);
     parameters = loadJSON("assets/parameters.json");
     playerImg = loadImage("assets/player.png");
     bossImg = loadImage("assets/boss.png");
+
+    generatedLevels = {};
+    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt");
+    generatedLevels["HighMed"] = loadStrings("results/HighMed.txt");
+    generatedLevels["HighLow"] = loadStrings("results/HighLow.txt");
+    generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt");
+    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt");
+    generatedLevels["MedLow"] = loadStrings("results/MedLow.txt");
+    generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt");
+    generatedLevels["LowMed"] = loadStrings("results/LowMed.txt");
+    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt");
 }
 
 function spawnersReady():void{
@@ -93,8 +106,41 @@ function playAIGame(input:string):void{
     agent.initialize();
 }
 
-function updateGenerate():void{
+function updateLevels():void{
+    let levelSelection: HTMLSelectElement = <HTMLSelectElement> document.getElementById("levels");
+    while(levelSelection.options.length > 0){
+        levelSelection.remove(0);
+    }
+    let empty = document.createElement("option");
+    empty.text = "--";
+    levelSelection.add(empty);
 
+    let strategyOption: any = document.getElementById("strategy");
+    let strategyName: string = strategyOption.options[strategyOption.selectedIndex].value;
+    let dexterityOption: any = document.getElementById("dexterity");
+    let dexterityName: string = dexterityOption.options[dexterityOption.selectedIndex].value;
+    if (generatedLevels[dexterityName + strategyName]){
+        for (let l of generatedLevels[dexterityName + strategyName]){
+            let temp = document.createElement("option");
+            temp.text = l;
+            levelSelection.add(temp);
+        }
+    }
+}
+
+function selectLevel():void{
+    let strategyOption: any = document.getElementById("strategy");
+    let strategyName: string = strategyOption.options[strategyOption.selectedIndex].value;
+    let dexterityOption: any = document.getElementById("dexterity");
+    let dexterityName: string = dexterityOption.options[dexterityOption.selectedIndex].value;
+    let levelsOption: any = document.getElementById("levels");
+    let levelName: string = levelsOption.options[levelsOption.selectedIndex].value;
+
+    if(levelName != "--"){
+        let file:any = loadJSON("results/" + dexterityName + strategyName + "/" + levelName, ()=>{
+            document.getElementById('inputText').textContent = JSON.stringify(file, null, 4);
+        })
+    }
 }
 
 function generateRandomGame():void{

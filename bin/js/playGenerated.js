@@ -19,6 +19,7 @@ var totalDrawTime;
 var spawnerGrammar;
 var scriptGrammar;
 var parameters;
+var generatedLevels;
 var playerImg;
 var bossImg;
 function debugLog(text) {
@@ -30,6 +31,16 @@ function preload() {
     parameters = loadJSON("assets/parameters.json");
     playerImg = loadImage("assets/player.png");
     bossImg = loadImage("assets/boss.png");
+    generatedLevels = {};
+    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt");
+    generatedLevels["HighMed"] = loadStrings("results/HighMed.txt");
+    generatedLevels["HighLow"] = loadStrings("results/HighLow.txt");
+    generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt");
+    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt");
+    generatedLevels["MedLow"] = loadStrings("results/MedLow.txt");
+    generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt");
+    generatedLevels["LowMed"] = loadStrings("results/LowMed.txt");
+    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt");
 }
 function spawnersReady() {
     scriptGrammar = loadJSON("assets/scriptGrammar.json", addSpawnerNames);
@@ -82,7 +93,39 @@ function playAIGame(input) {
     agent = new AStar("time", parameters.repeatingAction);
     agent.initialize();
 }
-function updateGenerate() {
+function updateLevels() {
+    var levelSelection = document.getElementById("levels");
+    while (levelSelection.options.length > 0) {
+        levelSelection.remove(0);
+    }
+    var empty = document.createElement("option");
+    empty.text = "--";
+    levelSelection.add(empty);
+    var strategyOption = document.getElementById("strategy");
+    var strategyName = strategyOption.options[strategyOption.selectedIndex].value;
+    var dexterityOption = document.getElementById("dexterity");
+    var dexterityName = dexterityOption.options[dexterityOption.selectedIndex].value;
+    if (generatedLevels[dexterityName + strategyName]) {
+        for (var _i = 0, _a = generatedLevels[dexterityName + strategyName]; _i < _a.length; _i++) {
+            var l = _a[_i];
+            var temp = document.createElement("option");
+            temp.text = l;
+            levelSelection.add(temp);
+        }
+    }
+}
+function selectLevel() {
+    var strategyOption = document.getElementById("strategy");
+    var strategyName = strategyOption.options[strategyOption.selectedIndex].value;
+    var dexterityOption = document.getElementById("dexterity");
+    var dexterityName = dexterityOption.options[dexterityOption.selectedIndex].value;
+    var levelsOption = document.getElementById("levels");
+    var levelName = levelsOption.options[levelsOption.selectedIndex].value;
+    if (levelName != "--") {
+        var file_1 = loadJSON("results/" + dexterityName + strategyName + "/" + levelName, function () {
+            document.getElementById('inputText').textContent = JSON.stringify(file_1, null, 4);
+        });
+    }
 }
 function generateRandomGame() {
     debugLog("Generating random level using Tracery.\n");

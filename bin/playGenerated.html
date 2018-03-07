@@ -35,14 +35,14 @@
     <div id="left"><div id="game"></div><label>Update: </label><label id="updateTime" class="frameRate">0.000</label> - <label>Draw: </label><label id="drawTime" class="frameRate">0.000</label><br/></div>
     <div id="input">
         <label>Dexterity: </label>
-        <select id="dexterity">
+        <select id="dexterity" onchange="updateLevels()">
             <option value="none">--</option>
             <option value="High">High</option>
             <option value="Med">Medium</option>
             <option value="Low">Low</option>
         </select>
         <label>Strategy: </label>
-        <select id="strategy">
+        <select id="strategy" onchange="updateLevels()">
             <option value="none">--</option>
             <option value="High">High</option>
             <option value="Med">Medium</option>
@@ -51,7 +51,7 @@
         <br/>
         <br/>
         <label>Level: </label>
-        <select id="levels">
+        <select id="levels" onchange="selectLevel()">
             <option value="none">--</option>
         </select>
         <br/>
