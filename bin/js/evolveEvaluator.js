@@ -75,7 +75,74 @@ var TreeNode = (function () {
         }
         this.safezone = this.safezone / 10;
         this.numChildren = 0;
+        this.totalValue = 0;
+        this.maxValue = -1000000000000000;
+        this.numVisits = 0;
     }
+    TreeNode.prototype.getUnexpandedNode = function () {
+        for (var i = 0; i < this.children.length; i++) {
+            if (this.children[i] == null) {
+                return i;
+            }
+        }
+        return -1;
+    };
+    TreeNode.prototype.pickBestChild = function (C, Q) {
+        var bestChild = this.children[0];
+        for (var _i = 0, _a = this.children; _i < _a.length; _i++) {
+            var child = _a[_i];
+            var bestUCB = bestChild.getUCB(C, Q) + 0.00000001 * Math.random();
+            var currentUCB = child.getUCB(C, Q) + 0.00000001 * Math.random();
+            if (currentUCB > bestUCB) {
+                bestChild = child;
+            }
+        }
+        return bestChild;
+    };
+    TreeNode.prototype.treePolicy = function (C, Q, parameters) {
+        var currentNode = this;
+        var unExpanded = currentNode.getUnexpandedNode();
+        while (unExpanded == -1) {
+            currentNode = currentNode.pickBestChild(C, Q);
+            unExpanded = currentNode.getUnexpandedNode();
+        }
+        if (!(currentNode.world.isWon() || currentNode.world.isLose())) {
+            currentNode = currentNode.addChild(unExpanded, 10, parameters);
+        }
+        return currentNode;
+    };
+    TreeNode.prototype.getUCB = function (C, Q) {
+        var exploitation = this.totalValue / this.numVisits;
+        var exploration = Math.sqrt(Math.log(this.parent.numVisits) / this.numVisits);
+        var bestValue = this.maxValue;
+        return Q * bestValue + (1 - Q) * exploitation + C * exploitation;
+    };
+    TreeNode.prototype.simulate = function (depth) {
+        var newWorld = this.world.clone();
+        var startTime = new Date().getTime();
+        for (var i = 0; i < depth; i++) {
+            if (newWorld.isWon() || newWorld.isLose()) {
+                break;
+            }
+            var action = Math.floor(Math.random() * this.children.length);
+            newWorld.update(ActionNumber.getAction(action));
+            if (newWorld.spawners.length > parameters.maxNumSpawners) {
+                return null;
+            }
+        }
+        return newWorld;
+    };
+    TreeNode.prototype.backpropagate = function (value) {
+        var currentNode = this;
+        while (currentNode != null) {
+            currentNode.numVisits += 1;
+            if (value > currentNode.maxValue) {
+                currentNode.maxValue = value;
+            }
+            currentNode.totalValue += value;
+            currentNode = currentNode.parent;
+        }
+    };
     TreeNode.prototype.addChild = function (action, macroAction, parameters) {
         if (macroAction === void 0) { macroAction = 1; }
         var newWorld = this.world.clone();
@@ -98,21 +165,6 @@ var TreeNode = (function () {
         this.children[action] = new TreeNode(this, action, newWorld, parameters);
         this.numChildren += 1;
         return this.children[action];
-    };
-    TreeNode.prototype.getEvaluation = function (target, noise) {
-        if (noise === void 0) { noise = 0; }
-        var isLose = 0;
-        if (this.world.isLose()) {
-            isLose = 1;
-        }
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var p = {
-            x: Math.floor(this.world.player.x / bucketWidth),
-            y: Math.floor(this.world.player.y / bucketHeight)
-        };
-        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone -
-            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     TreeNode.prototype.getSequence = function (macroAction) {
         if (macroAction === void 0) { macroAction = 1; }
@@ -139,6 +191,21 @@ var AStar = (function () {
         this.target = null;
         this.noise = 0;
         this.frames = 0;
+    };
+    AStar.prototype.getEvaluation = function (world, safezone, target, noise) {
+        if (noise === void 0) { noise = 0; }
+        var isLose = 0;
+        if (world.isLose()) {
+            isLose = 1;
+        }
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var p = {
+            x: Math.floor(world.player.x / bucketWidth),
+            y: Math.floor(world.player.y / bucketHeight)
+        };
+        return 0.5 * (1 - world.boss.getHealth()) - isLose + 0.5 * safezone -
+            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     };
     AStar.prototype.initializeBuckets = function (width, height) {
         var buckets = [];
@@ -248,6 +315,46 @@ var AStar = (function () {
         }
         return { x: bestX, y: bestY };
     };
+    AStar.prototype.getMCTSAction = function (world, value) {
+        var startTime = new Date().getTime();
+        var rootNode = new TreeNode(null, -1, world.clone(), this.parameters);
+        var currentNumbers = 0;
+        var bucketWidth = parameters.width / parameters.bucketsX;
+        var bucketHeight = parameters.height / parameters.bucketsY;
+        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
+        if (this.frames <= 0) {
+            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
+            this.noise = 0;
+            this.frames = 30;
+        }
+        else {
+            this.frames -= 1;
+        }
+        while (true) {
+            var currentNode = rootNode;
+            currentNode = currentNode.treePolicy(0.25, 0.25, parameters);
+            if (currentNode == null) {
+                return -1;
+            }
+            var newWorld = currentNode.simulate(10);
+            if (newWorld == null) {
+                return -1;
+            }
+            currentNode.backpropagate(this.getEvaluation(currentNode.world, currentNode.safezone, this.target, this.noise));
+            if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                break;
+            }
+            if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                break;
+            }
+            currentNumbers += 1;
+        }
+        if (rootNode.getUnexpandedNode() >= 0) {
+            return 5;
+        }
+        return rootNode.pickBestChild(0, 0.25).action;
+    };
     AStar.prototype.getAction = function (world, value) {
         var _this = this;
         var startTime = new Date().getTime();
@@ -267,17 +374,12 @@ var AStar = (function () {
             this.frames -= 1;
         }
         while (openNodes.length > 0) {
-            openNodes.sort(function (a, b) { return a.getEvaluation(_this.target, _this.noise) - b.getEvaluation(_this.target, _this.noise); });
+            openNodes.sort(function (a, b) { return _this.getEvaluation(a.world, a.safezone, _this.target, _this.noise) - _this.getEvaluation(b.world, b.safezone, _this.target, _this.noise); });
             var currentNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (var i = 0; i < currentNode.children.length; i++) {
-                    // console.log("Start One Action")
                     var node = currentNode.addChild(i, 10, this.parameters);
-                    // console.log("Action Add: " + currentNode.world.spawners.length)
-                    // console.log("Action Add: " + currentNode.world.hideUnknown)
-                    // console.log("Action Add: " + currentNode.world.boss.getHealth())
                     if (node == null) {
-                        // console.log("Action Expand");
                         return -1;
                     }
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
@@ -289,7 +391,7 @@ var AStar = (function () {
                         break;
                     }
                     if (bestNode.numChildren > 0 ||
-                        node.getEvaluation(this.target, this.noise) > bestNode.getEvaluation(this.target, this.noise)) {
+                        this.getEvaluation(node.world, node.safezone, this.target, this.noise) > this.getEvaluation(bestNode.world, bestNode.safezone, this.target, this.noise)) {
                         bestNode = node;
                     }
                     if (node.world.isWon()) {
@@ -304,12 +406,55 @@ var AStar = (function () {
                 }
             }
             currentNumbers += 1;
-            // console.log("Action: " + currentNode.world.spawners.length)
-            // console.log("Action: " + currentNode.world.hideUnknown)
-            // console.log("Action: " + currentNode.world.boss.getHealth())
         }
         var action = bestNode.getSequence().splice(0, 1)[0];
         return action;
+    };
+    AStar.prototype.playMCTSGame = function (world, value) {
+        var spawnerFrames = 0;
+        var currentNode = new TreeNode(null, -1, world, this.parameters);
+        this.status = GameStatus.LOSE;
+        var startGame = new Date().getTime();
+        while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+            var actionNode = currentNode.world.clone();
+            actionNode.hideUnknown = true;
+            var action = this.getMCTSAction(actionNode, value);
+            if (action == -1) {
+                this.status = GameStatus.ALOTSPAWNERS;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
+            var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
+            if (repeatValue < 1) {
+                repeatValue = 1;
+            }
+            var tempStartGame = new Date().getTime();
+            for (var i = 0; i < repeatValue; i++) {
+                var tempNode = currentNode.addChild(action, 1, parameters);
+                if (tempNode != null) {
+                    currentNode = tempNode;
+                    if (tempNode.world.isWon() || tempNode.world.isLose()) {
+                        break;
+                    }
+                }
+                else {
+                    this.status = GameStatus.ALOTSPAWNERS;
+                    currentNode.world.spawners.length = 0;
+                    return currentNode;
+                }
+            }
+            if (new Date().getTime() - startGame > this.parameters.maxAgentTime) {
+                this.status = GameStatus.TIMEOUT;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
+            currentNode.parent.world.spawners.length = 0;
+        }
+        if (currentNode.world.isWon()) {
+            this.status = GameStatus.WIN;
+        }
+        currentNode.world.spawners.length = 0;
+        return currentNode;
     };
     AStar.prototype.playGame = function (world, value) {
         var spawnerFrames = 0;
@@ -320,27 +465,18 @@ var AStar = (function () {
             var actionNode = currentNode.world.clone();
             actionNode.hideUnknown = true;
             var action = this.getAction(actionNode, value);
-            // console.log("Found Action")
-            // console.log("currentState: " + currentNode.world.spawners.length)
-            // console.log("currentState: " + currentNode.world.hideUnknown)
-            // console.log("currentState: " + currentNode.world.boss.getHealth())
             if (action == -1) {
-                // console.log("Play Action");
                 this.status = GameStatus.ALOTSPAWNERS;
                 currentNode.world.spawners.length = 0;
                 return currentNode;
             }
-            // console.log("Make 10 Moves")
             var repeatValue = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1) {
                 repeatValue = 1;
             }
             var tempStartGame = new Date().getTime();
-            // console.log("Applying Action")
             for (var i = 0; i < repeatValue; i++) {
                 var tempNode = currentNode.addChild(action, 1, parameters);
-                // console.log("tempNode: " + tempNode.world.spawners.length)
-                // console.log("tempNode: " + tempNode.world.hideUnknown)
                 if (tempNode != null) {
                     currentNode = tempNode;
                     if (tempNode.world.isWon() || tempNode.world.isLose()) {
@@ -348,14 +484,11 @@ var AStar = (function () {
                     }
                 }
                 else {
-                    // console.log("Play Expand");
                     this.status = GameStatus.ALOTSPAWNERS;
                     currentNode.world.spawners.length = 0;
                     return currentNode;
                 }
             }
-            // console.log("Spawners: " + currentNode.world.spawners.length)
-            // console.log("Hide Unknown: " + currentNode.world.hideUnknown)
             if (new Date().getTime() - startGame > this.parameters.maxAgentTime) {
                 this.status = GameStatus.TIMEOUT;
                 currentNode.world.spawners.length = 0;
@@ -566,7 +699,7 @@ function evaluateOne(parameters, input, noiseDist, repeatDist) {
     startWorld.initialize(input);
     var ai = new AStar(parameters, noiseDist, repeatDist);
     ai.initialize();
-    var bestNode = ai.playGame(startWorld.clone(), parameters.agentValue);
+    var bestNode = ai.playMCTSGame(startWorld.clone(), parameters.agentValue);
     var risk = 0;
     var distribution = 0;
     var frames = 0;

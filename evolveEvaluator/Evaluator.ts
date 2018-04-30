@@ -59,6 +59,9 @@ class TreeNode {
     safezone: number;
     futurezone: number;
     numChildren: number;
+    totalValue:number;
+    maxValue:number;
+    numVisits:number;
 
     constructor(parent: TreeNode, action: number, world: any, parameters:any) {
         this.parent = parent;
@@ -83,6 +86,79 @@ class TreeNode {
         }
         this.safezone = this.safezone / 10;
         this.numChildren = 0;
+        this.totalValue = 0;
+        this.maxValue = -1000000000000000;
+        this.numVisits = 0;
+    }
+
+    getUnexpandedNode():number{
+        for(let i:number=0; i<this.children.length; i++){
+            if(this.children[i] == null){
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    pickBestChild(C:number, Q:number):TreeNode{
+        let bestChild:TreeNode = this.children[0];
+        for(let child of this.children){
+            let bestUCB: number = bestChild.getUCB(C, Q) + 0.00000001 * Math.random();
+            let currentUCB: number = child.getUCB(C, Q) + 0.00000001 * Math.random();
+            if(currentUCB > bestUCB){
+                bestChild = child;
+            }
+        }
+        return bestChild;
+    }
+
+    treePolicy(C:number, Q:number, parameters:any):TreeNode{
+        let currentNode:TreeNode = this;
+        let unExpanded:number = currentNode.getUnexpandedNode();
+        while(unExpanded == -1){
+            currentNode = currentNode.pickBestChild(C, Q);
+            unExpanded = currentNode.getUnexpandedNode();
+        }
+        if(!(currentNode.world.isWon() || currentNode.world.isLose())){
+            currentNode = currentNode.addChild(unExpanded, 10, parameters);
+        }
+        return currentNode;
+    }
+
+    private getUCB(C:number, Q:number):number{
+        let exploitation:number = this.totalValue / this.numVisits;
+        let exploration:number = Math.sqrt(Math.log(this.parent.numVisits)/this.numVisits);
+        let bestValue:number = this.maxValue;
+
+        return Q * bestValue + (1-Q) * exploitation + C * exploitation;
+    }
+
+    simulate(depth:number):any{
+        let newWorld:any = this.world.clone();
+        let startTime: number = new Date().getTime();
+        for (let i: number = 0; i < depth; i++) {
+            if (newWorld.isWon() || newWorld.isLose()) {
+                break;
+            }
+            let action:number = Math.floor(Math.random() * this.children.length);
+            newWorld.update(ActionNumber.getAction(action));
+            if (newWorld.spawners.length > parameters.maxNumSpawners) {
+                return null;
+            }
+        }
+        return newWorld;
+    }
+
+    backpropagate(value:number):void{
+        let currentNode:TreeNode = this;
+        while(currentNode != null){
+            currentNode.numVisits += 1;
+            if(value > currentNode.maxValue){
+                currentNode.maxValue = value;
+            }
+            currentNode.totalValue += value;
+            currentNode = currentNode.parent;
+        }
     }
 
     addChild(action: number, macroAction: number = 1, parameters:any): TreeNode {
@@ -106,21 +182,6 @@ class TreeNode {
         this.children[action] = new TreeNode(this, action, newWorld, parameters);
         this.numChildren += 1;
         return this.children[action];
-    }
-
-    getEvaluation(target:any,noise: number = 0): number {
-        let isLose: number = 0;
-        if (this.world.isLose()) {
-            isLose = 1;
-        }
-        let bucketWidth: number = parameters.width / parameters.bucketsX;
-        let bucketHeight: number = parameters.height / parameters.bucketsY;
-        let p: any = {
-            x: Math.floor(this.world.player.x / bucketWidth),
-            y: Math.floor(this.world.player.y / bucketHeight)
-        };
-        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone -
-            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     }
 
     getSequence(macroAction: number = 1): number[] {
@@ -156,6 +217,21 @@ class AStar {
         this.target = null;
         this.noise = 0;
         this.frames = 0;
+    }
+
+    private getEvaluation(world: any, safezone:number, target: any, noise: number = 0): number {
+        let isLose: number = 0;
+        if (world.isLose()) {
+            isLose = 1;
+        }
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let p: any = {
+            x: Math.floor(world.player.x / bucketWidth),
+            y: Math.floor(world.player.y / bucketHeight)
+        };
+        return 0.5 * (1 - world.boss.getHealth()) - isLose + 0.5 * safezone -
+            0.25 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
     }
 
     private initializeBuckets(width: number, height: number): number[] {
@@ -273,6 +349,48 @@ class AStar {
         return { x: bestX, y: bestY };
     }
 
+    private getMCTSAction(world:any, value:number):number{
+        let startTime: number = new Date().getTime();
+        let rootNode: TreeNode = new TreeNode(null, -1, world.clone(), this.parameters)
+        let currentNumbers: number = 0;
+        let bucketWidth: number = parameters.width / parameters.bucketsX;
+        let bucketHeight: number = parameters.height / parameters.bucketsY;
+        let buckets: number[] = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
+        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
+        if (this.frames <= 0) {
+            this.target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth),
+                Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
+            this.noise = 0;
+            this.frames = 30;
+        }
+        else {
+            this.frames -= 1;
+        }
+        while (true) {
+            let currentNode: TreeNode = rootNode;
+            currentNode = currentNode.treePolicy(0.25, 0.25, parameters);
+            if (currentNode == null) {
+                return -1;
+            }
+            let newWorld = currentNode.simulate(10);
+            if(newWorld == null){
+                return -1;
+            }
+            currentNode.backpropagate(this.getEvaluation(currentNode.world, currentNode.safezone, this.target, this.noise));
+            if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
+                break;
+            }
+            if (this.parameters.agentType == "node" && currentNumbers >= value) {
+                break;
+            }
+            currentNumbers += 1;
+        }
+        if (rootNode.getUnexpandedNode() >= 0){
+            return 5;
+        }
+        return rootNode.pickBestChild(0, 0.25).action;
+    }
+
     private getAction(world: any, value: number): number {
         let startTime: number = new Date().getTime();
         let openNodes: TreeNode[] = [new TreeNode(null, -1, world.clone(), this.parameters)];
@@ -292,17 +410,12 @@ class AStar {
             this.frames -= 1;
         }
         while (openNodes.length > 0) {
-            openNodes.sort((a: TreeNode, b: TreeNode) => a.getEvaluation(this.target, this.noise) - b.getEvaluation(this.target, this.noise));
+            openNodes.sort((a: TreeNode, b: TreeNode) => this.getEvaluation(a.world, a.safezone, this.target, this.noise) - this.getEvaluation(b.world, b.safezone, this.target, this.noise));
             let currentNode: TreeNode = openNodes.pop();
             if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
                 for (let i: number = 0; i < currentNode.children.length; i++) {
-                    // console.log("Start One Action")
                     let node: TreeNode = currentNode.addChild(i, 10, this.parameters);
-                    // console.log("Action Add: " + currentNode.world.spawners.length)
-                    // console.log("Action Add: " + currentNode.world.hideUnknown)
-                    // console.log("Action Add: " + currentNode.world.boss.getHealth())
                     if(node == null){
-                        // console.log("Action Expand");
                         return -1;
                     }
                     if (this.parameters.agentType == "time" && new Date().getTime() - startTime >= value) {
@@ -314,7 +427,7 @@ class AStar {
                         break;
                     }
                     if (bestNode.numChildren > 0 || 
-                        node.getEvaluation(this.target, this.noise) > bestNode.getEvaluation(this.target, this.noise)) {
+                        this.getEvaluation(node.world, node.safezone, this.target, this.noise) > this.getEvaluation(bestNode.world, bestNode.safezone, this.target, this.noise)) {
                         bestNode = node;
                     }
                     if (node.world.isWon()) {
@@ -329,12 +442,58 @@ class AStar {
                 }
             }
             currentNumbers += 1;
-            // console.log("Action: " + currentNode.world.spawners.length)
-            // console.log("Action: " + currentNode.world.hideUnknown)
-            // console.log("Action: " + currentNode.world.boss.getHealth())
         }
         let action: number = bestNode.getSequence().splice(0, 1)[0];
         return action;
+    }
+
+    playMCTSGame(world: any, value: number): TreeNode {
+        let spawnerFrames: number = 0;
+        let currentNode: TreeNode = new TreeNode(null, -1, world, this.parameters);
+        this.status = GameStatus.LOSE;
+        let startGame: number = new Date().getTime();
+        while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
+            let actionNode: any = currentNode.world.clone();
+            actionNode.hideUnknown = true;
+            let action: number = this.getMCTSAction(actionNode, value);
+            if (action == -1) {
+                this.status = GameStatus.ALOTSPAWNERS;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
+            let repeatValue: number = Math.abs(this.repeatDist.ppf(Math.random()));
+            if (repeatValue < 1) {
+                repeatValue = 1;
+            }
+            let tempStartGame: number = new Date().getTime();
+            for (let i: number = 0; i < repeatValue; i++) {
+                let tempNode: any = currentNode.addChild(action, 1, parameters);
+                if (tempNode != null) {
+                    currentNode = tempNode;
+                    if (tempNode.world.isWon() || tempNode.world.isLose()) {
+                        break;
+                    }
+                }
+                else {
+                    this.status = GameStatus.ALOTSPAWNERS;
+                    currentNode.world.spawners.length = 0;
+                    return currentNode;
+                }
+            }
+
+            if (new Date().getTime() - startGame > this.parameters.maxAgentTime) {
+                this.status = GameStatus.TIMEOUT;
+                currentNode.world.spawners.length = 0;
+                return currentNode;
+            }
+            currentNode.parent.world.spawners.length = 0;
+        }
+
+        if (currentNode.world.isWon()) {
+            this.status = GameStatus.WIN;
+        }
+        currentNode.world.spawners.length = 0;
+        return currentNode;
     }
 
     playGame(world:any, value:number):TreeNode{
@@ -346,27 +505,18 @@ class AStar {
             let actionNode:any = currentNode.world.clone();
             actionNode.hideUnknown = true;
             let action: number = this.getAction(actionNode, value);
-            // console.log("Found Action")
-            // console.log("currentState: " + currentNode.world.spawners.length)
-            // console.log("currentState: " + currentNode.world.hideUnknown)
-            // console.log("currentState: " + currentNode.world.boss.getHealth())
             if(action == -1){
-                // console.log("Play Action");
                 this.status = GameStatus.ALOTSPAWNERS;
                 currentNode.world.spawners.length = 0;
                 return currentNode;
             }
-            // console.log("Make 10 Moves")
             let repeatValue:number = Math.abs(this.repeatDist.ppf(Math.random()));
             if (repeatValue < 1){
                 repeatValue = 1;
             }
             let tempStartGame: number = new Date().getTime();
-            // console.log("Applying Action")
             for(let i:number=0; i<repeatValue; i++){
                 let tempNode:any = currentNode.addChild(action, 1, parameters);
-                // console.log("tempNode: " + tempNode.world.spawners.length)
-                // console.log("tempNode: " + tempNode.world.hideUnknown)
                 if(tempNode != null){
                     currentNode = tempNode;
                     if(tempNode.world.isWon() || tempNode.world.isLose()){
@@ -374,14 +524,11 @@ class AStar {
                     }
                 }
                 else {
-                    // console.log("Play Expand");
                     this.status = GameStatus.ALOTSPAWNERS;
                     currentNode.world.spawners.length = 0;
                     return currentNode;
                 }
             }
-            // console.log("Spawners: " + currentNode.world.spawners.length)
-            // console.log("Hide Unknown: " + currentNode.world.hideUnknown)
             
             if (new Date().getTime() - startGame > this.parameters.maxAgentTime){
                 this.status = GameStatus.TIMEOUT;
@@ -607,7 +754,7 @@ function evaluateOne(parameters:any, input:any, noiseDist:any, repeatDist:any){
     startWorld.initialize(input);
     let ai: AStar = new AStar(parameters, noiseDist, repeatDist);
     ai.initialize();
-    let bestNode: TreeNode = ai.playGame(startWorld.clone(), parameters.agentValue);
+    let bestNode: TreeNode = ai.playMCTSGame(startWorld.clone(), parameters.agentValue);
 
     let risk: number = 0;
     let distribution: number = 0;
