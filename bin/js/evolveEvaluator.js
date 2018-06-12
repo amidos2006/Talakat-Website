@@ -417,7 +417,7 @@ var AStar = (function () {
         var startGame = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
             var actionNode = currentNode.world.clone();
-            actionNode.hideUnknown = true;
+            actionNode.hideUnknown = false;
             var action = this.getMCTSAction(actionNode, value);
             if (action == -1) {
                 this.status = GameStatus.ALOTSPAWNERS;
@@ -463,7 +463,7 @@ var AStar = (function () {
         var startGame = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
             var actionNode = currentNode.world.clone();
-            actionNode.hideUnknown = true;
+            actionNode.hideUnknown = false;
             var action = this.getAction(actionNode, value);
             if (action == -1) {
                 this.status = GameStatus.ALOTSPAWNERS;

@@ -297,6 +297,21 @@ declare var HALF_PI: any;
 declare var PI: any;
 
 /**
+ * Center Constant used in alignment
+ */
+declare var CENTER: any;
+
+declare var LEFT: any;
+
+declare var RIGHT: any;
+
+declare var TOP: any;
+
+declare var BOTTOM: any;
+
+declare var BASELINE: any;
+
+/**
  * QUARTER_PI is a mathematical constant with the value 0.7853982.
  */
 declare var QUARTER_PI: any;
@@ -1274,7 +1289,7 @@ declare function radians(degrees: number): number;
 //   param "horizAlign" has invalid type: Number/Constant
 //   param "vertAlign" has invalid type: Number/Constant
 //
-// declare function textAlign(horizAlign: Number/Constant, vertAlign: Number/Constant): number;
+declare function textAlign(horizAlign: any, vertAlign?: any): number;
 
 /**
  * Sets/gets the spacing, in pixels, between lines of text.
@@ -1302,7 +1317,7 @@ declare function textWidth(theText: string): number;
 /**
  * Draws text to the screen.
  */
-declare function text(str: string, x: number, y: number, x2: number, y2: number): any;
+declare function text(str: string, x: number, y: number, x2?: number, y2?: number): any;
 
 /**
  * Sets the current font that will be drawn with the text() function.

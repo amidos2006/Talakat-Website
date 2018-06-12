@@ -3,10 +3,13 @@
 		"target": "es5",
 		"sourceMap": false,
 		"outDir": "bin",
-		"outFile": "../bin/js/playGenerated.js"
+		"outFile": "../bin/js/editAndPlay.js"
 	},
 	"include": [
 		"Play.ts",
+		"Agent.ts",
+		"AStar.ts",
+		"TreeNode.ts",
 		"../definitions/*"
 	]
 }

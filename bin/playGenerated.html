@@ -5,122 +5,28 @@
 <head>
     <title>Bullet Hell Engine</title>
     <style>
-        #input {
+        .center {
+            margin: auto;
             position: fixed;
-            left: 410px;
-            width: 300px;
+            left: 50%;
+            margin-left: -200px;
+            margin-top: 0px;
+            padding-top: 0px;
         }
-
-        #debug{
-            position: fixed;
-            left: 750px;
-        }
-
-        #left {
-            position: fixed;
-            left: 0px;
-        }
-
-        .playButton {
-            position: relative;
-            width: 322px;
-        }
-        #levels{
-            width: 255px;
+        .wideButton{
+            margin: auto;
+            width: 400px;
         }
     </style>
 </head>
 
 <body>
-    <div id="left"><div id="game"></div><label>Update: </label><label id="updateTime" class="frameRate">0.000</label> - <label>Draw: </label><label id="drawTime" class="frameRate">0.000</label><br/></div>
-    <div id="input">
-        <label>Dexterity: </label>
-        <select id="dexterity" onchange="updateLevels()">
-            <option value="none">--</option>
-            <option value="High">High</option>
-            <option value="Med">Medium</option>
-            <option value="Low">Low</option>
-        </select>
-        <label>Strategy: </label>
-        <select id="strategy" onchange="updateLevels()">
-            <option value="none">--</option>
-            <option value="High">High</option>
-            <option value="Med">Medium</option>
-            <option value="Low">Low</option>
-        </select>
-        <br/>
-        <br/>
-        <label>Level: </label>
-        <select id="levels" onchange="selectLevel()">
-            <option value="none">--</option>
-        </select>
-        <br/>
-        <br/>
-        <textarea id="inputText" rows="37" cols="50">
-{
-    "spawners":{
-        "first":{
-            "pattern":["bullet"],
-            "patternTime":"4",
-            "spawnerPhase":"0,180,2,0,reverse",
-            "spawnedSpeed":"2",
-            "spawnedNumber":"2",
-            "spawnedAngle":"360"
-        },
-        "second":{
-            "pattern":["three", "wait", "wait"],
-            "patternTime":"2",
-            "spawnerPhase":"0,360,10,12,circle",
-            "spawnedSpeed":"0",
-            "spawnedNumber":"4",
-            "spawnedAngle":"360",
-            "spawnerRadius":"20"
-        },
-       "three":{
-             "pattern":["bullet"],
-             "patternRepeat":"1",
-             "spawnedAngle":"30",
-             "spawnedNumber":"3",
-             "spawnedSpeed": "4"
-        }
-    },
-    "boss":{
-        "script":[
-            {
-                "health":"1",
-                "events":["spawn,first"]
-            },
-            {
-                "health":"0.8",
-                "events":["spawn,second"]
-            },
-            {
-                "health":"0.6",
-                "events":["spawn,second"]
-            },
-            {
-                "health":"0.4",
-                "events":["spawn,first"]
-            }
-        ]
-    }
-}
-        </textarea>
-        <br/>
-        <button class="playButton" onclick="startGame(document.getElementById('inputText').value)">Play</button>
-        <br/>
-        <button class="playButton" onclick="playAIGame(document.getElementById('inputText').value)">Simple AI Play</button>
-        <br/>
-        <button class="playButton" onclick="stopGame()">Stop</button>
-        <br/>
-        <button class="playButton" onclick="generateRandomGame()">Generate Random</button>
-    </div>
-    <div id="debug">
-        <textarea readonly id="debugText" rows="43" cols="50"></textarea>
-        <br/>
-        <button class="playButton" onclick="document.getElementById('debugText').textContent = ''">Clear</button>
+    <div class="center">
+        <div id="game"></div>
+        <button id="copyButton" class="wideButton btn" onclick="copySelectedLevel()" data-clipboard-text="">Copy Level Code</button>
     </div>
 </body>
+<script src="js/clipboard.js"></script>
 <script src="js/talakat.js"></script>
 <script src="js/tracery.js"></script>
 <script src="js/p5.js"></script>

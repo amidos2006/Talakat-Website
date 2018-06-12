@@ -12,6 +12,14 @@
             ]
         },
         {
+            "label": "Build Edit And Play Environment",
+            "type": "typescript",
+            "tsconfig": "editAndPlay/tsconfig.json",
+            "problemMatcher": [
+                "$tsc"
+            ]
+        },
+        {
             "label": "Build Play Generated Environment",
             "type": "typescript",
             "tsconfig": "playGenerated/tsconfig.json",

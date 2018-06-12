@@ -454,7 +454,7 @@ class AStar {
         let startGame: number = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()) {
             let actionNode: any = currentNode.world.clone();
-            actionNode.hideUnknown = true;
+            actionNode.hideUnknown = false;
             let action: number = this.getMCTSAction(actionNode, value);
             if (action == -1) {
                 this.status = GameStatus.ALOTSPAWNERS;
@@ -503,7 +503,7 @@ class AStar {
         let startGame:number = new Date().getTime();
         while (!currentNode.world.isWon() && !currentNode.world.isLose()){
             let actionNode:any = currentNode.world.clone();
-            actionNode.hideUnknown = true;
+            actionNode.hideUnknown = false;
             let action: number = this.getAction(actionNode, value);
             if(action == -1){
                 this.status = GameStatus.ALOTSPAWNERS;

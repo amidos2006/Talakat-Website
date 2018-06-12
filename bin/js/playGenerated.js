@@ -1,56 +1,55 @@
+var gameState = {
+    LOADING: -1,
+    MAIN_SCREEN: 0,
+    LEVEL_SCREEN: 1,
+    PLAY_LEVEL: 2,
+    GAME_OVER: 3,
+    GAME_WIN: 4
+};
 var keys = {
     LEFT_ARROW: 37,
     RIGHT_ARROW: 39,
     UP_ARROW: 38,
     DOWN_ARROW: 40,
+    SPACE_KEY: 32,
     left: false,
     right: false,
     up: false,
-    down: false
+    down: false,
+    space: false
 };
 var newWorld = null;
 var currentWorld = null;
 var action = null;
-var agent = null;
-var interval = null;
-var numberOfCalls;
-var totalUpdateTime;
-var totalDrawTime;
-var spawnerGrammar;
-var scriptGrammar;
 var parameters;
 var generatedLevels;
+var selectedLevelsArray;
 var playerImg;
 var bossImg;
-function debugLog(text) {
-    document.getElementById("debugText").textContent += text;
-}
+var currentLevel = 0;
+var selectedLevel = "";
+var totalLevel = 18;
+var currentState = gameState.LOADING;
+var flashingTimer = 0;
+var sinWaveTimer = 0;
+var loaded = 0;
 function preload() {
-    debugLog("Loading Assets.\n");
-    spawnerGrammar = loadJSON("assets/spawnerGrammar.json", spawnersReady);
-    parameters = loadJSON("assets/parameters.json");
+    parameters = loadJSON("assets/parameters.json", finishedLoading);
     playerImg = loadImage("assets/player.png");
     bossImg = loadImage("assets/boss.png");
     generatedLevels = {};
-    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt");
-    generatedLevels["HighMed"] = loadStrings("results/HighMed.txt");
-    generatedLevels["HighLow"] = loadStrings("results/HighLow.txt");
-    generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt");
-    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt");
-    generatedLevels["MedLow"] = loadStrings("results/MedLow.txt");
-    generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt");
-    generatedLevels["LowMed"] = loadStrings("results/LowMed.txt");
-    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt");
+    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt", finishedLoading);
+    generatedLevels["HighMed"] = loadStrings("results/HighMed.txt", finishedLoading);
+    generatedLevels["HighLow"] = loadStrings("results/HighLow.txt", finishedLoading);
+    generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt", finishedLoading);
+    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt", finishedLoading);
+    generatedLevels["MedLow"] = loadStrings("results/MedLow.txt", finishedLoading);
+    generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt", finishedLoading);
+    generatedLevels["LowMed"] = loadStrings("results/LowMed.txt", finishedLoading);
+    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt", finishedLoading);
 }
-function spawnersReady() {
-    scriptGrammar = loadJSON("assets/scriptGrammar.json", addSpawnerNames);
-}
-function addSpawnerNames() {
-    for (var _i = 0, _a = scriptGrammar.name; _i < _a.length; _i++) {
-        var n = _a[_i];
-        spawnerGrammar.name.push(n);
-    }
-    debugLog("Asset Loaded.\n");
+function finishedLoading() {
+    loaded += 1;
 }
 function setup() {
     var canvas = createCanvas(400, 640);
@@ -58,93 +57,17 @@ function setup() {
     action = new Talakat.Point();
     background(0, 0, 0);
     stopGame();
-    debugLog("Seting up Editor.\n");
 }
 function startGame(input) {
     stopGame();
-    debugLog("Game Started.\n");
     newWorld = new Talakat.World(width, height, parameters.maxNumBullets);
     var script = JSON.parse(input);
     newWorld.initialize(script);
 }
 function stopGame() {
-    numberOfCalls = 0;
-    totalUpdateTime = 0;
-    totalDrawTime = 0;
-    if (interval != null) {
-        clearInterval(interval);
-        debugLog("Interrupted.\n");
-    }
-    if (agent != null) {
-        agent = null;
-        debugLog("Interrupted.\n");
-    }
     if (currentWorld != null) {
         currentWorld = null;
-        debugLog("Interrupted.\n");
     }
-}
-function playAIGame(input) {
-    stopGame();
-    debugLog("Game Started with AI.\n");
-    newWorld = new Talakat.World(width, height);
-    var script = JSON.parse(input);
-    newWorld.initialize(script);
-    agent = new AStar("time", parameters.repeatingAction);
-    agent.initialize();
-}
-function updateLevels() {
-    var levelSelection = document.getElementById("levels");
-    while (levelSelection.options.length > 0) {
-        levelSelection.remove(0);
-    }
-    var empty = document.createElement("option");
-    empty.text = "--";
-    levelSelection.add(empty);
-    var strategyOption = document.getElementById("strategy");
-    var strategyName = strategyOption.options[strategyOption.selectedIndex].value;
-    var dexterityOption = document.getElementById("dexterity");
-    var dexterityName = dexterityOption.options[dexterityOption.selectedIndex].value;
-    if (generatedLevels[dexterityName + strategyName]) {
-        for (var _i = 0, _a = generatedLevels[dexterityName + strategyName]; _i < _a.length; _i++) {
-            var l = _a[_i];
-            var temp = document.createElement("option");
-            temp.text = l;
-            levelSelection.add(temp);
-        }
-    }
-}
-function selectLevel() {
-    var strategyOption = document.getElementById("strategy");
-    var strategyName = strategyOption.options[strategyOption.selectedIndex].value;
-    var dexterityOption = document.getElementById("dexterity");
-    var dexterityName = dexterityOption.options[dexterityOption.selectedIndex].value;
-    var levelsOption = document.getElementById("levels");
-    var levelName = levelsOption.options[levelsOption.selectedIndex].value;
-    if (levelName != "--") {
-        var file_1 = loadJSON("results/" + dexterityName + strategyName + "/" + levelName, function () {
-            document.getElementById('inputText').textContent = JSON.stringify(file_1, null, 4);
-        });
-    }
-}
-function generateRandomGame() {
-    debugLog("Generating random level using Tracery.\n");
-    var input = "{\"spawners\":{";
-    for (var _i = 0, _a = scriptGrammar.name; _i < _a.length; _i++) {
-        var name_1 = _a[_i];
-        spawnerGrammar.name.splice(spawnerGrammar.name.indexOf(name_1), 1);
-        var spawnerTracery = tracery.createGrammar(spawnerGrammar);
-        input += "\"" + name_1 + "\":" + spawnerTracery.flatten("#origin#") + ",";
-        spawnerGrammar.name.push(name_1);
-    }
-    var scriptTracery = tracery.createGrammar(scriptGrammar);
-    input = input.substring(0, input.length - 1) + "}, \"boss\":{\"script\":[";
-    for (var _b = 0, _c = scriptGrammar.percent; _b < _c.length; _b++) {
-        var p = _c[_b];
-        input += "{\"health\":" + "\"" + p + "\",\"events\":[" + scriptTracery.flatten("#events#") + "]},";
-    }
-    input = input.substring(0, input.length - 1) + "]}}";
-    document.getElementById('inputText').textContent = JSON.stringify(JSON.parse(input), null, 4);
 }
 function setKey(key, down) {
     if (key == keys.LEFT_ARROW) {
@@ -159,6 +82,9 @@ function setKey(key, down) {
     if (key == keys.DOWN_ARROW) {
         keys.down = down;
     }
+    if (key == keys.SPACE_KEY) {
+        keys.space = down;
+    }
 }
 function keyPressed() {
     setKey(keyCode, true);
@@ -167,6 +93,196 @@ function keyReleased() {
     setKey(keyCode, false);
 }
 function draw() {
+    switch (currentState) {
+        case gameState.LOADING:
+            loadingScreen();
+            break;
+        case gameState.MAIN_SCREEN:
+            mainScreen();
+            break;
+        case gameState.LEVEL_SCREEN:
+            levelScreen();
+            break;
+        case gameState.PLAY_LEVEL:
+            playLevel();
+            break;
+        case gameState.GAME_OVER:
+            gameOver();
+            break;
+    }
+}
+function copySelectedLevel() {
+    document.getElementById("copyButton").setAttribute("data-clipboard-text", selectedLevel);
+    var clipboard = new ClipboardJS('.btn');
+    clipboard.on('success', function (e) {
+        console.info('Accion:', e.action);
+        console.info('Texto:', e.text);
+        console.info('Trigger:', e.trigger);
+        e.clearSelection();
+    });
+    clipboard.on('error', function (e) {
+        console.error('Accion:', e.action);
+        console.error('Trigger:', e.trigger);
+    });
+}
+function loadingScreen() {
+    clear();
+    background(0, 0, 0);
+    var tempValue = 10 * Math.sin(2 * Math.PI / 180 * sinWaveTimer);
+    textSize(32);
+    fill(255, 255, 255);
+    textAlign(CENTER);
+    text("LOADING", 200, 320 + tempValue);
+    if (loaded >= 10) {
+        currentState = gameState.MAIN_SCREEN;
+        selectedLevelsArray = {};
+        generatedLevels["LowLow"].sort();
+        generatedLevels["LowMed"].sort();
+        generatedLevels["LowHigh"].sort();
+        generatedLevels["MedLow"].sort();
+        generatedLevels["MedMed"].sort();
+        generatedLevels["MedHigh"].sort();
+        generatedLevels["HighLow"].sort();
+        generatedLevels["HighMed"].sort();
+        generatedLevels["HighHigh"].sort();
+        selectedLevelsArray["low"] = [];
+        selectedLevelsArray["med"] = [];
+        selectedLevelsArray["high"] = [];
+        var skippedValue = 3;
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowMed"].length; i++) {
+            selectedLevelsArray["low"].push("LowMed/" + generatedLevels["LowMed"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowHigh"].length; i++) {
+            selectedLevelsArray["low"].push("LowHigh/" + generatedLevels["LowHigh"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowLow"].length; i++) {
+            selectedLevelsArray["low"].push("LowLow/" + generatedLevels["LowLow"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedMed"].length; i++) {
+            selectedLevelsArray["med"].push("MedMed/" + generatedLevels["MedMed"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedHigh"].length; i++) {
+            selectedLevelsArray["med"].push("MedHigh/" + generatedLevels["MedHigh"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedLow"].length; i++) {
+            selectedLevelsArray["med"].push("MedLow/" + generatedLevels["MedLow"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighMed"].length; i++) {
+            selectedLevelsArray["high"].push("HighMed/" + generatedLevels["HighMed"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighHigh"].length; i++) {
+            selectedLevelsArray["high"].push("HighHigh/" + generatedLevels["HighHigh"][i]);
+        }
+        for (var i = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighLow"].length; i++) {
+            selectedLevelsArray["high"].push("HighLow/" + generatedLevels["HighLow"][i]);
+        }
+    }
+}
+function mainScreen() {
+    clear();
+    background(0, 0, 0);
+    var tempValue = 10 * Math.sin(2 * Math.PI / 180 * sinWaveTimer);
+    image(bossImg, 200 - bossImg.width / 2, 270 - bossImg.height / 2 + tempValue);
+    textSize(32);
+    fill(255, 255, 255);
+    textAlign(CENTER);
+    text("Attack of the Tupay", 200, 320);
+    if (flashingTimer > 10) {
+        textSize(8);
+        text("Press Space To Start", 200, 340);
+    }
+    sinWaveTimer = (sinWaveTimer + 1) % 360;
+    flashingTimer = (flashingTimer + 1) % 20;
+    if (keys.space) {
+        keys.space = false;
+        currentState = gameState.LEVEL_SCREEN;
+    }
+}
+function getCorrectLevel() {
+    var index = "high";
+    var currentShift = 12;
+    if (currentLevel < 6) {
+        index = "low";
+        currentShift = 0;
+    }
+    else if (currentLevel < 12) {
+        index = "med";
+        currentShift = 6;
+    }
+    var array = selectedLevelsArray[index];
+    var frac = 1 / (totalLevel / 3);
+    var percentage = ((1 - frac) * ((currentLevel - currentShift) / 10) + frac * Math.random());
+    return array[Math.floor(percentage * array.length)];
+}
+function levelScreen() {
+    clear();
+    background(0, 0, 0);
+    fill(255, 255, 255);
+    textAlign(CENTER);
+    textSize(8);
+    text("be ready for", 200, 290);
+    textSize(32);
+    text("LEVEL " + (currentLevel + 1) + " / " + totalLevel, 200, 320);
+    if (flashingTimer > 10) {
+        textSize(8);
+        text("Press Space To Start", 200, 340);
+    }
+    if (keys.space) {
+        keys.space = false;
+        currentState = gameState.PLAY_LEVEL;
+        var file_1 = loadJSON("results/" + getCorrectLevel(), function () {
+            newWorld = new Talakat.World(width, height);
+            newWorld.initialize(file_1);
+            selectedLevel = JSON.stringify(file_1);
+        });
+    }
+    flashingTimer = (flashingTimer + 1) % 20;
+}
+function gameOver() {
+    clear();
+    background(0, 0, 0);
+    textAlign(CENTER);
+    fill(255, 255, 255);
+    textSize(8);
+    text("You Died", 200, 290);
+    fill("#ff4040");
+    textSize(32);
+    text("Game Over", 200, 320);
+    if (flashingTimer > 10) {
+        fill(255, 255, 255);
+        textSize(8);
+        text("Press Space To Restart", 200, 340);
+    }
+    if (keys.space) {
+        keys.space = false;
+        currentState = gameState.MAIN_SCREEN;
+        currentLevel = 0;
+    }
+    flashingTimer = (flashingTimer + 1) % 20;
+}
+function gameWin() {
+    clear();
+    background(0, 0, 0);
+    textAlign(CENTER);
+    fill(255, 255, 255);
+    textSize(8);
+    text("You Win", 200, 290);
+    fill("#ffcb4f");
+    textSize(32);
+    text("Congratulations", 200, 320);
+    if (flashingTimer > 10) {
+        fill(255, 255, 255);
+        textSize(8);
+        text("Press Space To Restart", 200, 340);
+    }
+    if (keys.space) {
+        keys.space = false;
+        currentState = gameState.MAIN_SCREEN;
+        currentLevel = 0;
+    }
+    flashingTimer = (flashingTimer + 1) % 20;
+}
+function playLevel() {
     action.x = 0;
     action.y = 0;
     if (currentWorld != null) {
@@ -183,59 +299,26 @@ function draw() {
         if (keys.down) {
             action.y += 1;
         }
-        if (agent != null) {
-            action = ActionNumber.getAction(agent.getAction(currentWorld, 40, parameters));
-            for (var i = 0; i < parameters.repeatingAction - 1; i++) {
-                currentWorld.update(action);
-            }
-        }
         currentWorld.update(action);
-        totalUpdateTime += (new Date().getTime() - startTime);
         startTime = new Date().getTime();
         background(0, 0, 0);
         worldDraw(currentWorld);
-        totalDrawTime += (new Date().getTime() - startTime);
-        numberOfCalls += 1;
-        document.getElementById("updateTime").innerText = (totalUpdateTime / numberOfCalls).toFixed(5);
-        document.getElementById("drawTime").innerText = (totalDrawTime / numberOfCalls).toFixed(5);
         if (currentWorld.isLose()) {
-            debugLog("########################\n");
-            if (agent == null) {
-                debugLog("You Lose.\n");
-            }
-            else {
-                agent = null;
-                debugLog("Agent Loses.\n");
-            }
-            debugLog("########################\n");
-            numberOfCalls = 0;
-            totalUpdateTime = 0;
-            totalDrawTime = 0;
-            if (interval != null) {
-                clearInterval(interval);
-            }
             if (currentWorld != null) {
                 currentWorld = null;
             }
+            currentState = gameState.GAME_OVER;
         }
         else if (currentWorld.isWon()) {
-            debugLog("########################\n");
-            if (agent == null) {
-                debugLog("You Win.\n");
-            }
-            else {
-                agent = null;
-                debugLog("Agent Wins.\n");
-            }
-            debugLog("########################\n");
-            numberOfCalls = 0;
-            totalUpdateTime = 0;
-            totalDrawTime = 0;
-            if (interval != null) {
-                clearInterval(interval);
-            }
             if (currentWorld != null) {
                 currentWorld = null;
+            }
+            if (currentLevel < totalLevel - 1) {
+                currentLevel += 1;
+                currentState = gameState.LEVEL_SCREEN;
+            }
+            else {
+                currentState = gameState.GAME_WIN;
             }
         }
     }
@@ -245,6 +328,8 @@ function draw() {
     }
 }
 function worldDraw(world) {
+    clear();
+    background(0, 0, 0);
     strokeWeight(4);
     noFill();
     stroke(color(124, 46, 46));
@@ -262,279 +347,3 @@ function worldDraw(world) {
     fill(color(255, 255, 255));
     ellipse(world.player.x, world.player.y, 2 * world.player.radius, 2 * world.player.radius);
 }
-var GameStatus;
-(function (GameStatus) {
-    GameStatus[GameStatus["NONE"] = 0] = "NONE";
-    GameStatus[GameStatus["LOSE"] = 1] = "LOSE";
-    GameStatus[GameStatus["WIN"] = 2] = "WIN";
-    GameStatus[GameStatus["NODEOUT"] = 3] = "NODEOUT";
-    GameStatus[GameStatus["TIMEOUT"] = 4] = "TIMEOUT";
-    GameStatus[GameStatus["TOOSLOW"] = 5] = "TOOSLOW";
-    GameStatus[GameStatus["SPAWNERSTOBULLETS"] = 6] = "SPAWNERSTOBULLETS";
-    GameStatus[GameStatus["ALOTSPAWNERS"] = 7] = "ALOTSPAWNERS";
-})(GameStatus || (GameStatus = {}));
-var ActionNumber = (function () {
-    function ActionNumber() {
-    }
-    ActionNumber.getAction = function (action) {
-        if (action == ActionNumber.LEFT) {
-            return new Talakat.Point(-1, 0);
-        }
-        if (action == ActionNumber.RIGHT) {
-            return new Talakat.Point(1, 0);
-        }
-        if (action == ActionNumber.UP) {
-            return new Talakat.Point(0, -1);
-        }
-        if (action == ActionNumber.DOWN) {
-            return new Talakat.Point(0, 1);
-        }
-        if (action == ActionNumber.LEFT_DOWN) {
-            return new Talakat.Point(-1, 1);
-        }
-        if (action == ActionNumber.RIGHT_DOWN) {
-            return new Talakat.Point(1, 1);
-        }
-        if (action == ActionNumber.LEFT_UP) {
-            return new Talakat.Point(-1, -1);
-        }
-        if (action == ActionNumber.RIGHT_UP) {
-            return new Talakat.Point(1, -1);
-        }
-        return new Talakat.Point();
-    };
-    return ActionNumber;
-}());
-ActionNumber.LEFT = 0;
-ActionNumber.RIGHT = 1;
-ActionNumber.UP = 2;
-ActionNumber.DOWN = 3;
-ActionNumber.NONE = 4;
-ActionNumber.LEFT_UP = 5;
-ActionNumber.RIGHT_UP = 6;
-ActionNumber.LEFT_DOWN = 7;
-ActionNumber.RIGHT_DOWN = 8;
-var TreeNode = (function () {
-    function TreeNode(parent, action, world, parameters) {
-        this.parent = parent;
-        this.children = [null, null, null, null, null];
-        this.action = action;
-        this.world = world;
-        var tempWorld = world.clone();
-        this.safezone = 0;
-        for (var i = 0; i < 10; i++) {
-            tempWorld.update(ActionNumber.getAction(ActionNumber.NONE));
-            if (tempWorld.isLose() || tempWorld.spawners.length > parameters.maxNumSpawners) {
-                break;
-            }
-            if (tempWorld.isWon()) {
-                this.safezone = 10.0;
-                break;
-            }
-            this.safezone += 1.0;
-        }
-        this.safezone = this.safezone / 10.0;
-        this.numChildren = 0;
-    }
-    TreeNode.prototype.addChild = function (action, macroAction, parameters) {
-        if (macroAction === void 0) { macroAction = 1; }
-        var newWorld = this.world.clone();
-        for (var i = 0; i < macroAction; i++) {
-            newWorld.update(ActionNumber.getAction(action));
-        }
-        this.children[action] = new TreeNode(this, action, newWorld, parameters);
-        this.numChildren += 1;
-        return this.children[action];
-    };
-    TreeNode.prototype.getEvaluation = function (target, noise) {
-        if (noise === void 0) { noise = 0; }
-        var isLose = 0;
-        if (this.world.isLose()) {
-            isLose = 1;
-        }
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var p = {
-            x: Math.floor(this.world.player.x / bucketWidth),
-            y: Math.floor(this.world.player.y / bucketHeight)
-        };
-        return 0.5 * (1 - this.world.boss.getHealth()) - isLose + 0.5 * this.safezone +
-            -0.5 * (Math.abs(p.x - target.x) + Math.abs(p.y - target.y));
-    };
-    TreeNode.prototype.getSequence = function (macroAction) {
-        if (macroAction === void 0) { macroAction = 1; }
-        var result = [];
-        var currentNode = this;
-        while (currentNode.parent != null) {
-            for (var i = 0; i < macroAction; i++) {
-                result.push(currentNode.action);
-            }
-            currentNode = currentNode.parent;
-        }
-        return result.reverse();
-    };
-    return TreeNode;
-}());
-/// <reference path="TreeNode.ts"/>
-var AStar = (function () {
-    function AStar(type, repeatingAction) {
-        this.type = type;
-        this.repeatingAction = repeatingAction;
-    }
-    AStar.prototype.initialize = function () {
-    };
-    AStar.prototype.initializeBuckets = function (width, height) {
-        var buckets = [];
-        for (var i = 0; i < width * height; i++) {
-            buckets.push(0);
-        }
-        return buckets;
-    };
-    AStar.prototype.calculateBuckets = function (width, height, bucketX, bucketY, bullets, buckets) {
-        var s = new Talakat.Point();
-        var e = new Talakat.Point();
-        for (var _i = 0, bullets_1 = bullets; _i < bullets_1.length; _i++) {
-            var b = bullets_1[_i];
-            var indeces = [];
-            s.x = Math.floor((b.x - b.radius) / width);
-            s.y = Math.floor((b.y - b.radius) / height);
-            if (s.x < 0) {
-                s.x = 0;
-            }
-            if (s.y < 0) {
-                s.y = 0;
-            }
-            if (s.x >= bucketX) {
-                s.x = bucketX - 1;
-            }
-            if (s.y >= bucketY) {
-                s.y = bucketY - 1;
-            }
-            e.x = Math.floor((b.x + b.radius) / width);
-            e.y = Math.floor((b.y + b.radius) / height);
-            if (e.x < 0) {
-                e.x = 0;
-            }
-            if (e.y < 0) {
-                e.y = 0;
-            }
-            if (e.x >= bucketX) {
-                e.x = bucketX - 1;
-            }
-            if (e.y >= bucketY) {
-                e.y = bucketY - 1;
-            }
-            for (var x = s.x; x <= e.x; x++) {
-                for (var y = s.y; y < e.y; y++) {
-                    var index = y * bucketX + x;
-                    if (indeces.indexOf(index) == -1) {
-                        indeces.push(index);
-                    }
-                }
-            }
-            for (var _a = 0, indeces_1 = indeces; _a < indeces_1.length; _a++) {
-                var index = indeces_1[_a];
-                if (index < 0 || index >= buckets.length) {
-                    continue;
-                }
-                buckets[index] += 1;
-            }
-        }
-    };
-    AStar.prototype.calculateSurroundingBullets = function (x, y, bucketX, bucketY, riskDistance, buckets) {
-        var result = 0;
-        var visited = {};
-        var nodes = [{ x: x, y: y }];
-        while (nodes.length > 0) {
-            var currentNode = nodes.splice(0, 1)[0];
-            var index = currentNode.y * bucketX + currentNode.x;
-            var dist = Math.abs(currentNode.x - x) + Math.abs(currentNode.y - y);
-            if (!visited.hasOwnProperty(index) && dist <= riskDistance) {
-                visited[index] = true;
-                result += buckets[index] / (dist + 1);
-                for (var dx = -1; dx <= 1; dx++) {
-                    for (var dy = -1; dy <= 1; dy++) {
-                        if (dx == 0 && dy == 0) {
-                            continue;
-                        }
-                        var pos = { x: currentNode.x + dx, y: currentNode.y + dy };
-                        if (pos.x < 0) {
-                            pos.x = 0;
-                        }
-                        if (pos.y < 0) {
-                            pos.y = 0;
-                        }
-                        if (pos.x >= bucketX) {
-                            pos.x = bucketX - 1;
-                        }
-                        if (pos.y >= bucketY) {
-                            pos.y = bucketY - 1;
-                        }
-                        nodes.push(pos);
-                    }
-                }
-            }
-        }
-        return result;
-    };
-    AStar.prototype.getSafestBucket = function (px, py, bucketX, bucketY, buckets) {
-        var bestX = px;
-        var bestY = py;
-        for (var i = 0; i < buckets.length; i++) {
-            var x = i % bucketX;
-            var y = Math.floor(i / bucketX);
-            if (this.calculateSurroundingBullets(x, y, bucketX, bucketY, 4, buckets) <
-                this.calculateSurroundingBullets(bestX, bestY, bucketX, bucketY, 4, buckets)) {
-                bestX = x;
-                bestY = y;
-            }
-        }
-        return { x: bestX, y: bestY };
-    };
-    AStar.prototype.getAction = function (world, value, parameters) {
-        var startTime = new Date().getTime();
-        var tempWorld = world.clone();
-        tempWorld.hideUnknown = true;
-        var openNodes = [new TreeNode(null, -1, tempWorld, parameters)];
-        var bestNode = openNodes[0];
-        var currentNumbers = 0;
-        var solution = [];
-        var bucketWidth = parameters.width / parameters.bucketsX;
-        var bucketHeight = parameters.height / parameters.bucketsY;
-        var buckets = this.initializeBuckets(parameters.bucketsX, parameters.bucketsY);
-        this.calculateBuckets(bucketWidth, bucketHeight, parameters.bucketsX, parameters.bucketsY, world.bullets, buckets);
-        var target = this.getSafestBucket(Math.floor(world.player.x / bucketWidth), Math.floor(world.player.y / bucketHeight), parameters.bucketsX, parameters.bucketsY, buckets);
-        console.log(target);
-        while (openNodes.length > 0 && solution.length == 0) {
-            if (this.type == "time" && new Date().getTime() - startTime >= value) {
-                break;
-            }
-            openNodes.sort(function (a, b) { return a.getEvaluation(target) - b.getEvaluation(target); });
-            var currentNode = openNodes.pop();
-            if (!currentNode.world.isWon() && !currentNode.world.isLose()) {
-                if (this.type == "node" && currentNumbers >= value) {
-                    continue;
-                }
-                for (var i = 0; i < currentNode.children.length; i++) {
-                    var node = currentNode.addChild(i, 10, parameters);
-                    if (node.world.isWon()) {
-                        solution = node.getSequence();
-                        break;
-                    }
-                    if (node.numChildren > 0 || node.getEvaluation(target) > bestNode.getEvaluation(target)) {
-                        bestNode = node;
-                    }
-                    openNodes.push(node);
-                    currentNumbers += 1;
-                }
-            }
-        }
-        if (solution.length > 0) {
-            return solution.splice(0, 1)[0];
-        }
-        var action = bestNode.getSequence().splice(0, 1)[0];
-        // console.log(currentNumbers);
-        return action;
-    };
-    return AStar;
-}());
