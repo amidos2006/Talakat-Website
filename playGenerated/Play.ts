@@ -13,11 +13,13 @@ let keys:any = {
     UP_ARROW: 38,
     DOWN_ARROW: 40,
     SPACE_KEY: 32,
+    ESC_KEY: 27,
     left: false,
     right: false,
     up: false,
     down: false,
-    space: false
+    space: false,
+    esc: false
 }
 let newWorld:Talakat.World = null;
 let currentWorld:Talakat.World = null;
@@ -31,6 +33,10 @@ let playerImg:any;
 let bossImg:any;
 
 let currentLevel:number = 0;
+let death:number = 0;
+let selectedLevelDex:string = "";
+let selectedLevelStart:string = "";
+let selectedLevelValue:string = "";
 let selectedLevel:string = "";
 let totalLevel:number = 18;
 let currentState = gameState.LOADING;
@@ -96,6 +102,9 @@ function setKey(key:number, down:boolean):void{
     if(key == keys.SPACE_KEY){
         keys.space = down;
     }
+    if(key == keys.ESC_KEY){
+        keys.esc = down;
+    }
 }
 
 function keyPressed():void{
@@ -127,19 +136,8 @@ function draw():void{
 }
 
 function copySelectedLevel(){
-    document.getElementById("copyButton").setAttribute("data-clipboard-text", selectedLevel);
-    let clipboard = new ClipboardJS('.btn');
-    clipboard.on('success', function (e) {
-        console.info('Accion:', e.action);
-        console.info('Texto:', e.text);
-        console.info('Trigger:', e.trigger);
-        e.clearSelection();
-    });
-
-    clipboard.on('error', function (e) {
-        console.error('Accion:', e.action);
-        console.error('Trigger:', e.trigger);
-    });
+    window.location.href = "editAndPlay.html?dex=" + selectedLevelDex + 
+        "&strat=" + selectedLevelStart + "&level=" + selectedLevelValue;
 }
 
 function loadingScreen():void{
@@ -169,35 +167,35 @@ function loadingScreen():void{
         selectedLevelsArray["med"] = [];
         selectedLevelsArray["high"] = [];
 
-        let skippedValue:number = 3;
-        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowMed"].length; i++){
+        let skippedValue:number = 1;
+        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowLow"].length; i++){
+            selectedLevelsArray["low"].push("LowLow/" + generatedLevels["LowLow"][i]);
+        }
+        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowMed"].length; i++) {
             selectedLevelsArray["low"].push("LowMed/" + generatedLevels["LowMed"][i]);
         }
         for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowHigh"].length; i++) {
             selectedLevelsArray["low"].push("LowHigh/" + generatedLevels["LowHigh"][i]);
         }
-        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["LowLow"].length; i++) {
-            selectedLevelsArray["low"].push("LowLow/" + generatedLevels["LowLow"][i]);
-        }
 
+        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedLow"].length; i++) {
+            selectedLevelsArray["med"].push("MedLow/" + generatedLevels["MedLow"][i]);
+        }
         for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedMed"].length; i++) {
             selectedLevelsArray["med"].push("MedMed/" + generatedLevels["MedMed"][i]);
         }
         for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedHigh"].length; i++) {
             selectedLevelsArray["med"].push("MedHigh/" + generatedLevels["MedHigh"][i]);
         }
-        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["MedLow"].length; i++) {
-            selectedLevelsArray["med"].push("MedLow/" + generatedLevels["MedLow"][i]);
-        }
 
+        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighLow"].length; i++) {
+            selectedLevelsArray["high"].push("HighLow/" + generatedLevels["HighLow"][i]);
+        }
         for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighMed"].length; i++) {
             selectedLevelsArray["high"].push("HighMed/" + generatedLevels["HighMed"][i]);
         }
         for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighHigh"].length; i++) {
             selectedLevelsArray["high"].push("HighHigh/" + generatedLevels["HighHigh"][i]);
-        }
-        for (let i: number = Math.floor(Math.random() * skippedValue) + 1; i < generatedLevels["HighLow"].length; i++) {
-            selectedLevelsArray["high"].push("HighLow/" + generatedLevels["HighLow"][i]);
         }
     }
 }
@@ -207,11 +205,16 @@ function mainScreen():void{
     background(0, 0, 0);
 
     let tempValue = 10 * Math.sin(2 * Math.PI / 180 * sinWaveTimer);
-    image(bossImg, 200 - bossImg.width / 2, 270 - bossImg.height / 2 + tempValue)
-    textSize(32);
+    image(bossImg, 200 - bossImg.width / 2, 240 - bossImg.height / 2 + tempValue)
+
     fill(255, 255, 255);
     textAlign(CENTER);
-    text("Attack of the Tupay", 200, 320);
+
+    textSize(16);
+    text("TalakaT", 200, 290);
+
+    textSize(32);
+    text("Attack of the Toupee", 200, 320);
 
     if(flashingTimer > 10){
         textSize(8);
@@ -239,8 +242,36 @@ function getCorrectLevel():string{
     }
     let array:string[] = selectedLevelsArray[index];
     let frac = 1 / (totalLevel / 3);
-    let percentage: number = ((1 - frac) * ((currentLevel - currentShift) / 10) + frac * Math.random());
+    let percentage: number = ((1 - frac) * ((currentLevel - currentShift) / (totalLevel / 3)) + frac * Math.random());
     return array[Math.floor(percentage * array.length)];
+}
+
+function loadLevel():void{
+    let file: any = loadJSON("results/" + selectedLevel, () => {
+        newWorld = new Talakat.World(width, height);
+        newWorld.initialize(file);
+        selectedLevelDex = selectedLevel.split("/")[0];
+        if (selectedLevelDex.charAt(0) == "L") {
+            selectedLevelDex = "Low";
+        }
+        else if (selectedLevelDex.charAt(0) == "M") {
+            selectedLevelDex = "Med";
+        }
+        else {
+            selectedLevelDex = "High";
+        }
+        selectedLevelStart = selectedLevel.split("/")[0];
+        if (selectedLevelStart.charAt(selectedLevelStart.length - 1) == "w") {
+            selectedLevelStart = "Low";
+        }
+        else if (selectedLevelStart.charAt(selectedLevelStart.length - 1) == "d") {
+            selectedLevelStart = "Med";
+        }
+        else {
+            selectedLevelStart = "High";
+        }
+        selectedLevelValue = selectedLevel.split("/")[1];
+    });
 }
 
 function levelScreen():void{
@@ -263,11 +294,8 @@ function levelScreen():void{
     if (keys.space) {
         keys.space = false;
         currentState = gameState.PLAY_LEVEL;
-        let file: any = loadJSON("results/" + getCorrectLevel(), () => {
-            newWorld = new Talakat.World(width, height);
-            newWorld.initialize(file);
-            selectedLevel = JSON.stringify(file);
-        });
+        selectedLevel = getCorrectLevel();
+        loadLevel();
     }
     flashingTimer = (flashingTimer + 1) % 20;
 }
@@ -286,15 +314,25 @@ function gameOver():void{
     textSize(32);
     text("Game Over", 200, 320);
 
+    textSize(8);
+    text("You Died: " + death + " Times", 200, 330);
+
     if (flashingTimer > 10) {
         fill(255, 255, 255);
         textSize(8);
-        text("Press Space To Restart", 200, 340);
+        text("Press Space To Restart The Current Level\n\nEscape For Main Menu", 200, 370);
     }
-    if (keys.space) {
-        keys.space = false;
+    if (keys.esc) {
+        keys.esc = false;
         currentState = gameState.MAIN_SCREEN;
         currentLevel = 0;
+        death = 0;
+    }
+    if(keys.space){
+        keys.space = false;
+        currentState = gameState.PLAY_LEVEL;
+        
+        loadLevel();
     }
     flashingTimer = (flashingTimer + 1) % 20;
 }
@@ -313,10 +351,14 @@ function gameWin():void{
     textSize(32);
     text("Congratulations", 200, 320);
 
+    fill("#ff4040");
+    textSize(8);
+    text("You Died: " + death + " Times", 200, 330);
+
     if (flashingTimer > 10) {
         fill(255, 255, 255);
         textSize(8);
-        text("Press Space To Restart", 200, 340);
+        text("Press Space For Main Menu", 200, 370);
     }
     if (keys.space) {
         keys.space = false;
@@ -353,6 +395,7 @@ function playLevel():void{
             if (currentWorld != null) {
                 currentWorld = null;
             }
+            death += 1;
             currentState = gameState.GAME_OVER;
         }
         else if (currentWorld.isWon()) {

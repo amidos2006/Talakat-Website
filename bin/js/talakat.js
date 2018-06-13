@@ -847,7 +847,7 @@ var Talakat;
         Boss.prototype.initialize = function (width, height, script) {
             this.x = width / 2;
             this.y = height / 4;
-            this.maxHealth = 1000;
+            this.maxHealth = 1500;
             if ("health" in script) {
                 this.maxHealth = parseInt(script["health"]);
             }

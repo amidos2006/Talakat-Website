@@ -39,15 +39,25 @@ function preload():void{
     bossImg = loadImage("assets/boss.png");
 
     generatedLevels = {};
-    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt");
-    generatedLevels["HighMed"] = loadStrings("results/HighMed.txt");
-    generatedLevels["HighLow"] = loadStrings("results/HighLow.txt");
-    generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt");
-    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt");
-    generatedLevels["MedLow"] = loadStrings("results/MedLow.txt");
-    generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt");
-    generatedLevels["LowMed"] = loadStrings("results/LowMed.txt");
-    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt");
+    generatedLevels["HighHigh"] = loadStrings("results/HighHigh.txt", ()=>{
+        generatedLevels["HighMed"] = loadStrings("results/HighMed.txt", ()=>{
+            generatedLevels["HighLow"] = loadStrings("results/HighLow.txt", ()=>{
+                generatedLevels["MedHigh"] = loadStrings("results/MedHigh.txt", ()=>{
+                    generatedLevels["MedMed"] = loadStrings("results/MedMed.txt", ()=>{
+                        generatedLevels["MedLow"] = loadStrings("results/MedLow.txt", ()=>{
+                            generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt", ()=>{
+                                generatedLevels["LowMed"] = loadStrings("results/LowMed.txt", ()=>{
+                                    generatedLevels["LowLow"] = loadStrings("results/LowLow.txt", ()=>{
+                                        loadGame();
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
 }
 
 function spawnersReady():void{
@@ -104,6 +114,40 @@ function playAIGame(input:string):void{
     newWorld.initialize(script);
     agent = new AStar("time", parameters.repeatingAction);
     agent.initialize();
+}
+
+function loadGame():void{
+    if(document.location.search.length == 0){
+        return;
+    }
+    let options: string[] = document.location.search.split("&");
+    let dexValue: string = options[0].split("=")[1];
+    let stratValue: string = options[1].split("=")[1];
+    let levelValue: string = options[2].split("=")[1];
+    
+    let dexterityOption: any = document.getElementById("dexterity");
+    for (let i: number = 0; i < dexterityOption.options.length; i++){
+        if (dexValue.trim().toLowerCase() == dexterityOption.options[i].value.trim().toLowerCase()){
+            dexterityOption.selectedIndex = i;
+            break;
+        }
+    }
+    let strategyOption: any = document.getElementById("strategy");
+    for (let i: number = 0; i < strategyOption.options.length; i++) {
+        if (stratValue.trim().toLowerCase() == strategyOption.options[i].value.trim().toLowerCase()) {
+            strategyOption.selectedIndex = i;
+            break;
+        }
+    }
+    updateLevels();
+    let levelsOption: any = document.getElementById("levels");
+    for (let i: number = 0; i < levelsOption.options.length; i++) {
+        if (levelValue.trim().toLowerCase() == levelsOption.options[i].value.trim().toLowerCase()) {
+            levelsOption.selectedIndex = i;
+            break;
+        }
+    }
+    selectLevel();
 }
 
 function updateLevels():void{

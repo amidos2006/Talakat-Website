@@ -17,13 +17,23 @@
             margin: auto;
             width: 400px;
         }
+        .wideParagraph{
+            text-align: center;
+            margin-top:1px;
+            margin-bottom: 1px;
+        }
+        body{
+            margin: 0px;
+        }
     </style>
 </head>
 
 <body>
     <div class="center">
+        <p class="wideParagraph"><a href="index.html">HOME</a></p>
         <div id="game"></div>
-        <button id="copyButton" class="wideButton btn" onclick="copySelectedLevel()" data-clipboard-text="">Copy Level Code</button>
+        <button id="copyButton" class="wideButton btn" onclick="copySelectedLevel()" data-clipboard-text="">Edit the Current Level</button>
+        <p class="wideParagraph">for more details, check <a href="">our paper</a>.</p>
     </div>
 </body>
 <script src="js/clipboard.js"></script>
