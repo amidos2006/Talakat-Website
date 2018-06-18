@@ -4,7 +4,8 @@ var gameState = {
     LEVEL_SCREEN: 1,
     PLAY_LEVEL: 2,
     GAME_OVER: 3,
-    GAME_WIN: 4
+    GAME_WIN: 4,
+    MODE_SELECTION: 5
 };
 var keys = {
     LEFT_ARROW: 37,
@@ -33,6 +34,9 @@ var death = 0;
 var selectedLevelDex = "";
 var selectedLevelStart = "";
 var selectedLevelValue = "";
+var selectedMode = ["ARCADE", "CHALLENGE", "INFINITE"];
+var selectedModeDescription = ["play a set of fixed levels", "play a set of randomly selected challenging levels", "play randomly selected inifinite number of levels"];
+var selectedModeIndex = 0;
 var selectedLevel = "";
 var totalLevel = 18;
 var currentState = gameState.LOADING;
@@ -53,6 +57,7 @@ function preload() {
     generatedLevels["LowHigh"] = loadStrings("results/LowHigh.txt", finishedLoading);
     generatedLevels["LowMed"] = loadStrings("results/LowMed.txt", finishedLoading);
     generatedLevels["LowLow"] = loadStrings("results/LowLow.txt", finishedLoading);
+    generatedLevels["selected"] = loadStrings("results/selectedLevels.txt", finishedLoading);
 }
 function finishedLoading() {
     loaded += 1;
@@ -62,18 +67,6 @@ function setup() {
     canvas.parent("game");
     action = new Talakat.Point();
     background(0, 0, 0);
-    stopGame();
-}
-function startGame(input) {
-    stopGame();
-    newWorld = new Talakat.World(width, height, parameters.maxNumBullets);
-    var script = JSON.parse(input);
-    newWorld.initialize(script);
-}
-function stopGame() {
-    if (currentWorld != null) {
-        currentWorld = null;
-    }
 }
 function setKey(key, down) {
     if (key == keys.LEFT_ARROW) {
@@ -109,6 +102,9 @@ function draw() {
         case gameState.MAIN_SCREEN:
             mainScreen();
             break;
+        case gameState.MODE_SELECTION:
+            modeSelection();
+            break;
         case gameState.LEVEL_SCREEN:
             levelScreen();
             break;
@@ -132,7 +128,7 @@ function loadingScreen() {
     fill(255, 255, 255);
     textAlign(CENTER);
     text("LOADING", 200, 320 + tempValue);
-    if (loaded >= 10) {
+    if (loaded >= 11) {
         currentState = gameState.MAIN_SCREEN;
         selectedLevelsArray = {};
         generatedLevels["LowLow"].sort();
@@ -177,6 +173,46 @@ function loadingScreen() {
         }
     }
 }
+function modeSelection() {
+    clear();
+    background(0, 0, 0);
+    var tempValue = 10 * Math.sin(2 * Math.PI / 180 * sinWaveTimer);
+    fill(255, 255, 255);
+    textAlign(CENTER);
+    textSize(32);
+    text("<", 60 + tempValue, 320);
+    text(">", 340 - tempValue, 320);
+    textSize(8);
+    text("select gameplay mode", 200, 290);
+    textSize(32);
+    text(selectedMode[selectedModeIndex], 200, 320);
+    textSize(8);
+    text(selectedModeDescription[selectedModeIndex], 200, 330);
+    if (flashingTimer > 10) {
+        textSize(8);
+        text("Left/Right change Mode\n\nSpace To Start", 200, 370);
+    }
+    sinWaveTimer = (sinWaveTimer + 1) % 360;
+    flashingTimer = (flashingTimer + 1) % 20;
+    if (keys.space) {
+        keys.space = false;
+        currentState = gameState.LEVEL_SCREEN;
+    }
+    if (keys.left) {
+        keys.left = false;
+        selectedModeIndex -= 1;
+        if (selectedModeIndex < 0) {
+            selectedModeIndex += selectedMode.length;
+        }
+    }
+    if (keys.right) {
+        keys.right = false;
+        selectedModeIndex += 1;
+        if (selectedModeIndex >= selectedMode.length) {
+            selectedModeIndex -= selectedMode.length;
+        }
+    }
+}
 function mainScreen() {
     clear();
     background(0, 0, 0);
@@ -196,28 +232,43 @@ function mainScreen() {
     flashingTimer = (flashingTimer + 1) % 20;
     if (keys.space) {
         keys.space = false;
-        currentState = gameState.LEVEL_SCREEN;
+        currentState = gameState.MODE_SELECTION;
     }
 }
 function getCorrectLevel() {
-    var index = "high";
-    var currentShift = 12;
-    if (currentLevel < 6) {
-        index = "low";
-        currentShift = 0;
+    var correctLevel = "";
+    switch (selectedModeIndex) {
+        case 0:
+            correctLevel = generatedLevels["selected"][currentLevel];
+            break;
+        case 1:
+            var index = "high";
+            var currentShift = 12;
+            if (currentLevel < 6) {
+                index = "low";
+                currentShift = 0;
+            }
+            else if (currentLevel < 12) {
+                index = "med";
+                currentShift = 6;
+            }
+            var array = selectedLevelsArray[index];
+            var frac = 1 / (totalLevel / 3);
+            var percentage = ((1 - frac) * ((currentLevel - currentShift) / (totalLevel / 3)) + frac * Math.random());
+            correctLevel = array[Math.floor(percentage * array.length)];
+            break;
+        case 2:
+            var indeces = ["high", "med", "low"];
+            array = selectedLevelsArray[indeces[Math.floor(Math.random() * indeces.length)]];
+            percentage = (0.2 * Math.min((currentLevel / array.length), 1) + 0.8 * Math.random());
+            correctLevel = array[Math.floor(percentage * array.length)];
+            break;
     }
-    else if (currentLevel < 12) {
-        index = "med";
-        currentShift = 6;
-    }
-    var array = selectedLevelsArray[index];
-    var frac = 1 / (totalLevel / 3);
-    var percentage = ((1 - frac) * ((currentLevel - currentShift) / (totalLevel / 3)) + frac * Math.random());
-    return array[Math.floor(percentage * array.length)];
+    return correctLevel;
 }
 function loadLevel() {
     var file = loadJSON("results/" + selectedLevel, function () {
-        newWorld = new Talakat.World(width, height);
+        newWorld = new Talakat.World(width, height, parameters.maxNumBullets);
         newWorld.initialize(file);
         selectedLevelDex = selectedLevel.split("/")[0];
         if (selectedLevelDex.charAt(0) == "L") {
@@ -250,16 +301,27 @@ function levelScreen() {
     textSize(8);
     text("be ready for", 200, 290);
     textSize(32);
-    text("LEVEL " + (currentLevel + 1) + " / " + totalLevel, 200, 320);
+    if (selectedModeIndex != 2) {
+        text("LEVEL " + (currentLevel + 1) + " / " + totalLevel, 200, 320);
+    }
+    else {
+        text("LEVEL " + (currentLevel + 1), 190, 320);
+    }
     if (flashingTimer > 10) {
         textSize(8);
-        text("Press Space To Start", 200, 340);
+        text("Press Space To Start\n\nPress ESC For Main Menu", 200, 340);
     }
     if (keys.space) {
         keys.space = false;
         currentState = gameState.PLAY_LEVEL;
         selectedLevel = getCorrectLevel();
         loadLevel();
+    }
+    if (keys.esc) {
+        keys.esc = false;
+        currentState = gameState.MAIN_SCREEN;
+        currentLevel = 0;
+        death = 0;
     }
     flashingTimer = (flashingTimer + 1) % 20;
 }
@@ -278,7 +340,12 @@ function gameOver() {
     if (flashingTimer > 10) {
         fill(255, 255, 255);
         textSize(8);
-        text("Press Space To Restart The Current Level\n\nEscape For Main Menu", 200, 370);
+        if (selectedModeIndex != 2) {
+            text("Press Space To Restart The Current Level\n\nEscape For Main Menu", 200, 370);
+        }
+        else {
+            text("Press Space To Start New Level\n\nEscape For Main Menu", 200, 370);
+        }
     }
     if (keys.esc) {
         keys.esc = false;
@@ -289,6 +356,9 @@ function gameOver() {
     if (keys.space) {
         keys.space = false;
         currentState = gameState.PLAY_LEVEL;
+        if (selectedModeIndex == 2) {
+            selectedLevel = getCorrectLevel();
+        }
         loadLevel();
     }
     flashingTimer = (flashingTimer + 1) % 20;
@@ -335,6 +405,17 @@ function playLevel() {
         if (keys.down) {
             action.y += 1;
         }
+        if (keys.space) {
+            keys.space = false;
+            currentLevel += 1;
+            currentState = gameState.LEVEL_SCREEN;
+        }
+        if (keys.esc) {
+            keys.esc = false;
+            currentState = gameState.MAIN_SCREEN;
+            currentLevel = 0;
+            death = 0;
+        }
         currentWorld.update(action);
         startTime = new Date().getTime();
         background(0, 0, 0);
@@ -350,7 +431,7 @@ function playLevel() {
             if (currentWorld != null) {
                 currentWorld = null;
             }
-            if (currentLevel < totalLevel - 1) {
+            if (currentLevel < totalLevel - 1 || selectedModeIndex == 2) {
                 currentLevel += 1;
                 currentState = gameState.LEVEL_SCREEN;
             }
